@@ -30,7 +30,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: src/frontend
-        run: pnpm install --frozen-lockfile
+        run: pnpm install
 
       - name: Build frontend
         working-directory: src/frontend
@@ -41,6 +41,6 @@ jobs:
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          projectName: brainforge-7xn
+          projectName: caffeine-brainforge
           directory: src/frontend/dist
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
