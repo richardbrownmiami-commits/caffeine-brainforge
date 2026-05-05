@@ -1,0 +1,135 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: "General Sans";
+  src: url("/assets/fonts/GeneralSans-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+  font-style: normal;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/assets/fonts/JetBrainsMono[wght].woff2") format("woff2");
+  font-weight: 100 800;
+  font-display: swap;
+  font-style: normal;
+}
+
+@layer base {
+  :root {
+    --background: 0.09 0 0;
+    --foreground: 0.93 0.005 0;
+    --card: 0.12 0 0;
+    --card-foreground: 0.93 0.005 0;
+    --popover: 0.14 0.005 0;
+    --popover-foreground: 0.93 0.005 0;
+    --primary: 0.76 0.16 158;
+    --primary-foreground: 0.08 0 0;
+    --secondary: 0.17 0 0;
+    --secondary-foreground: 0.82 0 0;
+    --muted: 0.15 0 0;
+    --muted-foreground: 0.52 0.01 0;
+    --accent: 0.19 0 0;
+    --accent-foreground: 0.93 0 0;
+    --destructive: 0.57 0.22 25;
+    --destructive-foreground: 0.97 0 0;
+    --border: 0.21 0 0;
+    --input: 0.17 0 0;
+    --ring: 0.76 0.16 158;
+    --radius: 6px;
+    --sidebar: 0.11 0 0;
+    --sidebar-foreground: 0.82 0 0;
+    --sidebar-primary: 0.76 0.16 158;
+    --sidebar-primary-foreground: 0.08 0 0;
+    --sidebar-accent: 0.17 0 0;
+    --sidebar-accent-foreground: 0.93 0 0;
+    --sidebar-border: 0.18 0 0;
+    --sidebar-ring: 0.76 0.16 158;
+  }
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: "General Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: oklch(var(--border));
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(var(--muted-foreground));
+}
+
+.code-editor {
+  font-family: "JetBrains Mono", monospace !important;
+  font-size: 13px;
+  line-height: 1.7;
+  tab-size: 2;
+  resize: none;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+}
+.code-editor:focus {
+  outline: none;
+}
+
+/* Colorful chat bubbles */
+.chat-bubble-ai {
+  background: linear-gradient(
+    135deg,
+    oklch(0.14 0.02 220 / 0.9),
+    oklch(0.13 0.02 250 / 0.9)
+  );
+  border: 1px solid oklch(0.28 0.05 220 / 0.5);
+}
+.chat-bubble-user {
+  background: linear-gradient(135deg, oklch(0.2 0.06 280), oklch(0.18 0.05 300));
+  border: 1px solid oklch(0.32 0.08 280 / 0.6);
+}
+
+.nav-item-active {
+  background: oklch(var(--sidebar-accent));
+  border-left: 2px solid oklch(var(--primary));
+}
+.nav-item {
+  border-left: 2px solid transparent;
+}
+
+.logo-img-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.logo-img {
+  transition: filter 0.3s ease, transform 0.3s ease;
+  filter: drop-shadow(0 0 6px oklch(0.76 0.16 158 / 0.3));
+}
+.logo-img:hover,
+.logo-img-wrap:hover .logo-img {
+  filter: drop-shadow(0 0 14px oklch(0.76 0.16 158 / 0.8))
+    drop-shadow(0 0 28px oklch(0.76 0.16 158 / 0.4));
+  transform: scale(1.1) rotate(5deg);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
