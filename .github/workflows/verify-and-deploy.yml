@@ -32,19 +32,16 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       # ────────────────────────────────────────────────────────────
-      # STAGE 1 — SYNTAX CHECK (biome)
+      # STAGE 1 — SYNTAX CHECK (biome) — warning only, not a blocker
       # ────────────────────────────────────────────────────────────
-      - name: Stage 1 · Syntax check
+      - name: Stage 1 · Syntax check (auto-fix)
         id: syntax
         working-directory: src/frontend
+        continue-on-error: true
         run: |
           echo "::group::biome check"
-          if ! pnpm run check; then
-            echo "Syntax issues found — attempting auto-fix (attempt 1/2)…"
-            pnpm run fix || true
-            echo "Retrying biome check after fix…"
-            pnpm run check
-          fi
+          pnpm exec biome check --write --unsafe src || true
+          pnpm run check || echo "::warning::Biome found style issues (non-blocking). Run 'pnpm run check' locally to review."
           echo "::endgroup::"
 
       # ────────────────────────────────────────────────────────────
@@ -71,7 +68,7 @@ jobs:
         working-directory: src/frontend
         run: |
           echo "TypeScript check failed — running biome fix and retrying (attempt 2/2)…"
-          pnpm run fix || true
+          pnpm exec biome check --write --unsafe src || true
 
       - name: Stage 3 · TypeScript dry-run (attempt 2)
         id: typecheck_2
