@@ -1,4 +1,5 @@
 // BrainForge Cloudflare Worker API
+// Last pushed: 2026-05-06 06:45 UTC
 // Tables: projects, messages, settings, model_claims, snapshots, ai_memory, ai_rules
 //         agent_sessions, agent_activity, error_log
 
