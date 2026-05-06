@@ -2,6 +2,11 @@ name = "brainforge-api"
 main = "src/index.js"
 compatibility_date = "2024-01-01"
 
+# Durable Object migration: remove old AgentLoop class that no longer exists in code
+[[migrations]]
+tag = "v1"
+deleted_classes = ["AgentLoop"]
+
 [[d1_databases]]
 binding = "DB"
 database_name = "brainforge-db"
