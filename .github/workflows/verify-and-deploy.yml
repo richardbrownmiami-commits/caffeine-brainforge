@@ -51,7 +51,7 @@ jobs:
         id: conflicts
         run: |
           echo "::group::conflict scanner"
-          node .github/scripts/check-conflicts.js
+          node .github/scripts/check-conflicts.cjs
           echo "::endgroup::"
 
       # ────────────────────────────────────────────────────────────
