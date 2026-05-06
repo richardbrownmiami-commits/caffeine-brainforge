@@ -225,22 +225,46 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
               </button>
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   if (!feedbackText.trim()) return;
-                  const existing = JSON.parse(
-                    localStorage.getItem("bf_user_feedback") || "[]",
-                  );
-                  existing.push({
-                    text: feedbackText.trim(),
-                    time: Date.now(),
-                  });
-                  localStorage.setItem(
-                    "bf_user_feedback",
-                    JSON.stringify(existing),
-                  );
+                  const msg = feedbackText.trim();
+                  const timestamp = new Date().toISOString();
+                  // Try Worker first
+                  let workerOk = false;
+                  try {
+                    const res = await fetch(
+                      "https://brainforge-api.richard-brown-miami.workers.dev/api/feedback",
+                      {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                          "X-BrainForge-Secret": "2200",
+                        },
+                        body: JSON.stringify({ message: msg, timestamp }),
+                      },
+                    );
+                    workerOk = res.ok;
+                  } catch {
+                    workerOk = false;
+                  }
+                  // Fallback to localStorage
+                  if (!workerOk) {
+                    const existing = JSON.parse(
+                      localStorage.getItem("bf_user_feedback") || "[]",
+                    );
+                    existing.push({ text: msg, time: Date.now() });
+                    localStorage.setItem(
+                      "bf_user_feedback",
+                      JSON.stringify(existing),
+                    );
+                  }
                   setFeedbackText("");
                   setFeedbackOpen(false);
-                  alert("✓ Feedback submit ho gaya! Admin review karega.");
+                  alert(
+                    workerOk
+                      ? "✓ Feedback bhej diya gaya! Admin review karega."
+                      : "✓ Feedback locally save ho gaya! (Worker offline tha)",
+                  );
                 }}
                 className="flex-1 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors"
                 data-ocid="feedback.submit_button"
