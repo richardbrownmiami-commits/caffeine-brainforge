@@ -1,20 +1,4 @@
-// Brai
-
-  // master_agent_tasks for Master Agent task queue
-  await db.prepare(`
-    CREATE TABLE IF NOT EXISTS master_agent_tasks (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      instruction TEXT NOT NULL,
-      added_by TEXT DEFAULT 'user',
-      status TEXT DEFAULT 'pending',
-      priority INTEGER DEFAULT 5,
-      result TEXT,
-      error TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `).run();
-nForge Cloudflare Worker API
+// BrainForge Cloudflare Worker API
 // Tables: projects, messages, settings, model_claims, snapshots, ai_memory, ai_rules
 //         agent_sessions, agent_activity, error_log, agent_memory_summaries, ai_config
 
