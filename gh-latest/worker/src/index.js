@@ -1,7 +1,6 @@
 // BrainForge Cloudflare Worker API
-// Last pushed: 2026-05-06 06:45 UTC
 // Tables: projects, messages, settings, model_claims, snapshots, ai_memory, ai_rules
-//         agent_sessions, agent_activity, error_log
+//         agent_sessions, agent_activity, error_log, agent_memory_summaries, ai_config
 
 const REQUIRED_SECRET = '2200';
 
@@ -96,7 +95,10 @@ async function initTables(db) {
       updatedAt TEXT NOT NULL,
       completedAt TEXT,
       approvalPendingToolName TEXT,
-      approvalPendingArgs TEXT
+      approvalPendingArgs TEXT,
+      total_prompt_tokens INTEGER DEFAULT 0,
+      total_completion_tokens INTEGER DEFAULT 0,
+      estimated_cost_usd REAL DEFAULT 0
     )
   `).run();
 
@@ -115,14 +117,48 @@ async function initTables(db) {
     )
   `).run();
 
+  // Enhanced error_log: error_type, stack_trace, context_json, resolved
   await db.prepare(`
     CREATE TABLE IF NOT EXISTS error_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sessionId TEXT,
       tool TEXT,
+      error_type TEXT DEFAULT 'tool_error',
       errorMsg TEXT,
-      stack TEXT,
+      stack_trace TEXT,
+      context_json TEXT,
+      resolved INTEGER DEFAULT 0,
       timestamp TEXT NOT NULL
+    )
+  `).run();
+  // Migrate: add new columns if upgrading from old schema
+  try { await db.prepare('ALTER TABLE error_log ADD COLUMN error_type TEXT DEFAULT "tool_error"').run(); } catch (_) {}
+  try { await db.prepare('ALTER TABLE error_log ADD COLUMN stack_trace TEXT').run(); } catch (_) {}
+  try { await db.prepare('ALTER TABLE error_log ADD COLUMN context_json TEXT').run(); } catch (_) {}
+  try { await db.prepare('ALTER TABLE error_log ADD COLUMN resolved INTEGER DEFAULT 0').run(); } catch (_) {}
+
+  // Agent memory summaries with project_id
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS agent_memory_summaries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sessionId TEXT,
+      project_id TEXT,
+      task TEXT,
+      summary TEXT,
+      toolsUsed TEXT,
+      stepsCompleted INTEGER,
+      status TEXT,
+      createdAt TEXT
+    )
+  `).run();
+  try { await db.prepare('ALTER TABLE agent_memory_summaries ADD COLUMN project_id TEXT').run(); } catch (_) {}
+
+  // ai_config: secure key storage in D1 (token security feature)
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS ai_config (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL
     )
   `).run();
 }
@@ -138,6 +174,8 @@ function checkSecret(request) {
 async function runCleanup(db) {
   try {
     await db.prepare(`DELETE FROM agent_activity WHERE timestamp < datetime('now', '-7 days')`).run();
+    // Auto-delete error_log rows older than 7 days
+    await db.prepare(`DELETE FROM error_log WHERE timestamp < datetime('now', '-7 days')`).run();
     await db.prepare(
       `DELETE FROM agent_sessions WHERE createdAt < datetime('now', '-14 days') AND status NOT IN ('running','paused')`
     ).run();
@@ -377,14 +415,64 @@ async function executeTool(toolName, args, session, db, retryCount = 0) {
       'UPDATE agent_activity SET status=?, errorMsg=?, timestamp=? WHERE id=?'
     ).bind('failed', err.message, errNow, actId).run();
     await db.prepare(
-      'INSERT INTO error_log (sessionId, tool, errorMsg, stack, timestamp) VALUES (?, ?, ?, ?, ?)'
-    ).bind(session.id, toolName, err.message, err.stack || '', errNow).run();
+      'INSERT INTO error_log (sessionId, tool, error_type, errorMsg, stack_trace, context_json, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind(session.id, toolName, 'tool_error', err.message, err.stack || '', JSON.stringify(args), errNow).run();
     await db.prepare(
       `UPDATE agent_sessions SET status='failed', updatedAt=? WHERE id=?`
     ).bind(errNow, session.id).run();
     session.abortFlag = true;
     return { error: err.message };
   }
+}
+
+// ── TELEGRAM NOTIFICATION ────────────────────────────────────────────────────
+
+// Falls back to env.TELEGRAM_BOT_TOKEN / env.TELEGRAM_CHAT_ID if not in credentials
+async function sendTelegramNotification(credentials, task, status, stepCount, cost, errorMsg, env) {
+  const botToken = credentials?.telegramBotToken || (env && env.TELEGRAM_BOT_TOKEN);
+  const chatId = credentials?.telegramChatId || (env && env.TELEGRAM_CHAT_ID);
+  if (!botToken || !chatId) return;
+  try {
+    const statusEmoji = status === 'completed' ? '✅' : status === 'failed' ? '❌' : '⚠️';
+    let text = `${statusEmoji} [BrainForge Agent]\nTask: ${task}\nStatus: ${status}\nCost: ${(cost || 0).toFixed(6)}\nSteps: ${stepCount}\nTime: ${new Date().toISOString()}`;
+    if (errorMsg) text += `\nError: ${String(errorMsg).slice(0, 200)}`;
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text })
+    });
+  } catch (_) { /* non-blocking — Telegram failure must not affect agent */ }
+}
+
+// ── AGENT MEMORY SUMMARY ─────────────────────────────────────────────────────
+
+async function generateAndSaveMemorySummary(session, db, task, stepCount, toolsUsed, finalResult, status) {
+  const { openRouterApiKey, defaultModel } = session.credentials;
+  if (!openRouterApiKey) return;
+  try {
+    const prompt = `Summarize this agent session in 2-3 sentences. Task: ${task}. Steps completed: ${stepCount}. Tools used: ${toolsUsed.join(', ')}. Result: ${String(finalResult).slice(0, 200)}. Status: ${status}.`;
+    const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${openRouterApiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://caffeine-brainforge.pages.dev',
+        'X-Title': 'BrainForge Agent'
+      },
+      body: JSON.stringify({
+        model: defaultModel || 'openai/gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 150
+      })
+    });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const summary = data.choices?.[0]?.message?.content || '';
+    if (!summary) return;
+    await db.prepare(
+      'INSERT INTO agent_memory_summaries (sessionId, project_id, task, summary, toolsUsed, stepsCompleted, status, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(session.id, session.projectId || null, task, summary, toolsUsed.join(', '), stepCount, status, new Date().toISOString()).run();
+  } catch (_) { /* best-effort — summary failure must not affect agent status */ }
 }
 
 // ── OPENROUTER AGENT LOOP ────────────────────────────────────────────────────
@@ -414,8 +502,28 @@ IMPORTANT:
 - Write DONE (no Action) when the task is fully complete
 - Never guess tool results — wait for the Observation`;
 
-async function runAgentLoop(session, db, ctx) {
+async function runAgentLoop(session, db, ctx, env) {
   const maxSteps = 30;
+  const task = session.messages[0]?.content?.replace('Task: ', '') || '';
+  const toolsUsed = [];
+  let totalPromptTokens = 0;
+  let totalCompletionTokens = 0;
+  let estimatedCostUsd = 0;
+  let finalResult = '';
+
+  // Feature 6: Prepend last 3 memory summaries to context
+  try {
+    const { results: prevSummaries } = await db.prepare(
+      'SELECT summary FROM agent_memory_summaries ORDER BY id DESC LIMIT 3'
+    ).all();
+    if (prevSummaries && prevSummaries.length > 0) {
+      const summaryContext = prevSummaries.map(r => r.summary).join('\n');
+      session.messages.unshift({
+        role: 'system',
+        content: `Previous sessions context:\n${summaryContext}`
+      });
+    }
+  } catch (_) { /* best-effort */ }
 
   while (session.currentStep < maxSteps && !session.abortFlag) {
     // Build messages
@@ -446,24 +554,40 @@ async function runAgentLoop(session, db, ctx) {
         const errBody = await resp.text();
         const now = new Date().toISOString();
         await db.prepare(
-          'INSERT INTO error_log (sessionId, tool, errorMsg, stack, timestamp) VALUES (?, ?, ?, ?, ?)'
-        ).bind(session.id, 'openrouter', `HTTP ${resp.status}`, errBody.slice(0, 500), now).run();
+          'INSERT INTO error_log (sessionId, tool, error_type, errorMsg, stack_trace, context_json, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        ).bind(session.id, 'openrouter', 'openrouter_error', `HTTP ${resp.status}`, errBody.slice(0, 500), null, now).run();
         await db.prepare(
           `UPDATE agent_sessions SET status='failed', updatedAt=? WHERE id=?`
         ).bind(now, session.id).run();
+        await sendTelegramNotification(session.credentials, task, 'failed', session.currentStep, estimatedCostUsd, `HTTP ${resp.status}`, env);
+        await generateAndSaveMemorySummary(session, db, task, session.currentStep, toolsUsed, 'OpenRouter HTTP error', 'failed');
         return;
       }
 
       const data = await resp.json();
       aiResponse = data.choices?.[0]?.message?.content || '';
+
+      // Feature 3: Track token usage and cost
+      if (data.usage) {
+        const promptT = data.usage.prompt_tokens || 0;
+        const completionT = data.usage.completion_tokens || 0;
+        totalPromptTokens += promptT;
+        totalCompletionTokens += completionT;
+        estimatedCostUsd += promptT * 0.000001 + completionT * 0.000002;
+        await db.prepare(
+          `UPDATE agent_sessions SET total_prompt_tokens=?, total_completion_tokens=?, estimated_cost_usd=?, updatedAt=? WHERE id=?`
+        ).bind(totalPromptTokens, totalCompletionTokens, estimatedCostUsd, new Date().toISOString(), session.id).run();
+      }
     } catch (err) {
       const now = new Date().toISOString();
       await db.prepare(
-        'INSERT INTO error_log (sessionId, tool, errorMsg, stack, timestamp) VALUES (?, ?, ?, ?, ?)'
-      ).bind(session.id, 'openrouter', err.message, err.stack || '', now).run();
+        'INSERT INTO error_log (sessionId, tool, error_type, errorMsg, stack_trace, context_json, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).bind(session.id, 'openrouter', 'openrouter_error', err.message, err.stack || '', null, now).run();
       await db.prepare(
         `UPDATE agent_sessions SET status='failed', updatedAt=? WHERE id=?`
       ).bind(now, session.id).run();
+      await sendTelegramNotification(session.credentials, task, 'failed', session.currentStep, estimatedCostUsd, err.message, env);
+      await generateAndSaveMemorySummary(session, db, task, session.currentStep, toolsUsed, err.message, 'failed');
       return;
     }
 
@@ -473,22 +597,29 @@ async function runAgentLoop(session, db, ctx) {
     // Check for DONE
     if (/\bDONE\b/.test(aiResponse) && !/Action:/.test(aiResponse)) {
       const now = new Date().toISOString();
+      finalResult = aiResponse;
       await db.prepare(
         `UPDATE agent_sessions SET status='completed', completedAt=?, updatedAt=? WHERE id=?`
       ).bind(now, now, session.id).run();
+      await sendTelegramNotification(session.credentials, task, 'completed', session.currentStep, estimatedCostUsd, null, env);
+      await generateAndSaveMemorySummary(session, db, task, session.currentStep, toolsUsed, finalResult, 'completed');
       agentSessions.delete(session.id);
       return;
     }
 
     // Parse Action
-    const actionMatch = aiResponse.match(/Action:\s*(\w+)\s*\(([\s\S]*?)\)\s*(?:STOP|$)/);
-    if (!actionMatch) {
+    const actionMatch = aiResponse.match(/Action:\s*(\w+)\s*\([\s\S]*?\)\s*(?:STOP|$)/);
+    // Re-extract to capture the args portion reliably
+    const actionFull = aiResponse.match(/Action:\s*(\w+)\s*\(([\s\S]*?)\)\s*(?:STOP|$)/);
+    if (!actionFull) {
       // No action found — treat as complete or add observation asking for action
       if (session.currentStep > 0) {
         const now = new Date().toISOString();
         await db.prepare(
           `UPDATE agent_sessions SET status='completed', completedAt=?, updatedAt=? WHERE id=?`
         ).bind(now, now, session.id).run();
+        await sendTelegramNotification(session.credentials, task, 'completed', session.currentStep, estimatedCostUsd, null, env);
+        await generateAndSaveMemorySummary(session, db, task, session.currentStep, toolsUsed, aiResponse, 'completed');
         agentSessions.delete(session.id);
         return;
       }
@@ -497,15 +628,18 @@ async function runAgentLoop(session, db, ctx) {
       continue;
     }
 
-    const toolName = actionMatch[1];
+    const toolName = actionFull[1];
     let toolArgs = {};
     try {
-      toolArgs = JSON.parse(actionMatch[2]);
+      toolArgs = JSON.parse(actionFull[2]);
     } catch (_) {
       session.messages.push({ role: 'user', content: `Observation: Failed to parse tool arguments. Please use valid JSON object.` });
       session.currentStep++;
       continue;
     }
+
+    // Track tools used
+    if (!toolsUsed.includes(toolName)) toolsUsed.push(toolName);
 
     // Update D1 current step/tool
     session.currentStep++;
@@ -516,6 +650,7 @@ async function runAgentLoop(session, db, ctx) {
 
     // Execute tool
     const toolResult = await executeTool(toolName, toolArgs, session, db);
+    finalResult = JSON.stringify(toolResult);
 
     if (session.abortFlag) break;
 
@@ -526,13 +661,16 @@ async function runAgentLoop(session, db, ctx) {
     });
   }
 
-  // Check final state
+  // Determine final status
+  const terminalStatus = session.abortFlag ? 'stopped' : 'failed';
   if (!session.abortFlag) {
     const now = new Date().toISOString();
     await db.prepare(
       `UPDATE agent_sessions SET status='failed', updatedAt=? WHERE id=?`
     ).bind(now, session.id).run();
   }
+  await sendTelegramNotification(session.credentials, task, terminalStatus, session.currentStep, estimatedCostUsd, null, env);
+  await generateAndSaveMemorySummary(session, db, task, session.currentStep, toolsUsed, finalResult, terminalStatus);
   agentSessions.delete(session.id);
 }
 
@@ -744,11 +882,28 @@ export default {
       // ── AGENT: RUN ───────────────────────────────────────────
       if (path === '/api/run' && method === 'POST') {
         const body = await request.json();
-        const { task, openRouterApiKey, defaultModel, githubToken, githubRepo,
-                cloudflareToken, cloudflareAccountId, projectId } = body;
+        const { task, openRouterApiKey: bodyOpenRouterKey, defaultModel, githubToken: bodyGitHubToken, githubRepo,
+                cloudflareToken: bodyCloudflareToken, cloudflareAccountId, projectId,
+                telegramBotToken: bodyTelegramToken, telegramChatId: bodyTelegramChat } = body;
 
         if (!task) return json({ error: 'task is required' }, 400);
-        if (!openRouterApiKey) return json({ error: 'openRouterApiKey is required' }, 400);
+
+        // Token security: load stored keys from ai_config, fallback to request body, then env vars
+        const cfgRowsRun = await (async () => {
+          try {
+            const { results } = await env.DB.prepare('SELECT key, value FROM ai_config').all();
+            const m = {};
+            for (const r of results) m[r.key] = r.value;
+            return m;
+          } catch (_) { return {}; }
+        })();
+        const openRouterApiKey = bodyOpenRouterKey || cfgRowsRun['openrouter_api_key'] || '';
+        const githubToken = bodyGitHubToken || cfgRowsRun['github_token'] || '';
+        const cloudflareToken = bodyCloudflareToken || cfgRowsRun['cloudflare_token'] || '';
+        const telegramBotToken = bodyTelegramToken || cfgRowsRun['telegram_bot_token'] || (env && env.TELEGRAM_BOT_TOKEN) || '';
+        const telegramChatId = bodyTelegramChat || cfgRowsRun['telegram_chat_id'] || (env && env.TELEGRAM_CHAT_ID) || '';
+
+        if (!openRouterApiKey) return json({ error: 'openRouterApiKey is required (pass in body or store via POST /api/config)' }, 400);
 
         const sessionId = crypto.randomUUID();
         const now = new Date().toISOString();
@@ -761,10 +916,11 @@ export default {
         // Build in-memory session
         const session = {
           id: sessionId,
+          projectId: projectId || null,
           currentStep: 0,
           abortFlag: false,
           approvalResolve: null,
-          credentials: { openRouterApiKey, defaultModel, githubToken, githubRepo, cloudflareToken, cloudflareAccountId },
+          credentials: { openRouterApiKey, defaultModel, githubToken, githubRepo, cloudflareToken, cloudflareAccountId, telegramBotToken, telegramChatId },
           messages: [
             { role: 'user', content: `Task: ${task}${projectId ? `\nProjectId: ${projectId}` : ''}` }
           ]
@@ -774,8 +930,8 @@ export default {
         // Run cleanup async
         ctx.waitUntil(runCleanup(env.DB));
 
-        // Run agent loop async — don't await
-        ctx.waitUntil(runAgentLoop(session, env.DB, ctx));
+        // Run agent loop async — don't await (pass env for Telegram env fallback)
+        ctx.waitUntil(runAgentLoop(session, env.DB, ctx, env));
 
         return json({ sessionId, status: 'running' });
       }
@@ -810,10 +966,15 @@ export default {
         const sessionId = url.searchParams.get('sessionId');
         if (!sessionId) return json({ error: 'sessionId query param required' }, 400);
         const row = await env.DB.prepare(
-          'SELECT id, task, status, currentStep, currentTool, createdAt, updatedAt, completedAt, approvalPendingToolName, approvalPendingArgs FROM agent_sessions WHERE id=?'
+          'SELECT id, task, status, currentStep, currentTool, createdAt, updatedAt, completedAt, approvalPendingToolName, approvalPendingArgs, total_prompt_tokens, total_completion_tokens, estimated_cost_usd FROM agent_sessions WHERE id=?'
         ).bind(sessionId).first();
         if (!row) return json({ error: 'Session not found' }, 404);
-        return json(row);
+        return json({
+          ...row,
+          totalPromptTokens: row.total_prompt_tokens,
+          totalCompletionTokens: row.total_completion_tokens,
+          estimatedCostUsd: row.estimated_cost_usd
+        });
       }
 
       // ── AGENT: LOG ───────────────────────────────────────────
@@ -830,26 +991,360 @@ export default {
       // ── AGENT: SESSIONS LIST ─────────────────────────────────
       if (path === '/api/sessions' && method === 'GET') {
         const { results } = await env.DB.prepare(
-          'SELECT id, task, status, currentStep, currentTool, createdAt, updatedAt, completedAt FROM agent_sessions ORDER BY createdAt DESC LIMIT 20'
+          'SELECT id, task, status, currentStep, currentTool, createdAt, updatedAt, completedAt, total_prompt_tokens, total_completion_tokens, estimated_cost_usd FROM agent_sessions ORDER BY createdAt DESC LIMIT 20'
         ).all();
-        return json(results);
+        return json(results.map(r => ({
+          ...r,
+          totalPromptTokens: r.total_prompt_tokens,
+          totalCompletionTokens: r.total_completion_tokens,
+          estimatedCostUsd: r.estimated_cost_usd
+        })));
       }
 
       // ── ERROR LOG ────────────────────────────────────────────
+      if (path === '/api/error-log/summary' && method === 'GET') {
+        const total = await env.DB.prepare('SELECT COUNT(*) as cnt FROM error_log').first();
+        const { results: byTool } = await env.DB.prepare(
+          'SELECT tool, COUNT(*) as count FROM error_log GROUP BY tool ORDER BY count DESC LIMIT 20'
+        ).all();
+        const { results: recentErrors } = await env.DB.prepare(
+          'SELECT * FROM error_log ORDER BY timestamp DESC LIMIT 5'
+        ).all();
+        return json({
+          totalErrors: total?.cnt || 0,
+          errorsByTool: byTool,
+          recentErrors
+        });
+      }
+
       if (path === '/api/error-log' && method === 'GET') {
         const sessionId = url.searchParams.get('sessionId');
-        const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+        const search = url.searchParams.get('search');
+        const tool = url.searchParams.get('tool');
+        const errorType = url.searchParams.get('type');
+        const from = url.searchParams.get('from');
+        const to = url.searchParams.get('to');
+        // Cap at 20 per spec
+        const limit = Math.min(parseInt(url.searchParams.get('limit') || '20', 10), 20);
+
+        const conditions = [];
+        const params = [];
+
+        if (sessionId) { conditions.push('sessionId=?'); params.push(sessionId); }
+        if (tool) { conditions.push('tool=?'); params.push(tool); }
+        if (errorType) { conditions.push('error_type=?'); params.push(errorType); }
+        if (search) { conditions.push('(errorMsg LIKE ? OR tool LIKE ? OR stack_trace LIKE ?)'); params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
+        if (from) { conditions.push('timestamp >= ?'); params.push(from); }
+        if (to) { conditions.push('timestamp <= ?'); params.push(to); }
+
+        const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+        const countQuery = `SELECT COUNT(*) as cnt FROM error_log ${where}`;
+        const dataQuery = `SELECT * FROM error_log ${where} ORDER BY timestamp DESC LIMIT ?`;
+
+        const totalCount = await env.DB.prepare(countQuery).bind(...params).first();
+        const total = totalCount?.cnt || 0;
+        // Fetch limit+1 to detect has_more
+        const { results } = await env.DB.prepare(dataQuery).bind(...params, limit + 1).all();
+        const has_more = results.length > limit;
+        const errors = has_more ? results.slice(0, limit) : results;
+
+        return json({ errors, total_count: total, has_more });
+      }
+
+      // ── MEMORY SUMMARIES ─────────────────────────────────────
+      if (path === '/api/memory-summaries' && method === 'GET') {
+        const sessionId = url.searchParams.get('sessionId');
         let q, params;
         if (sessionId) {
-          q = 'SELECT * FROM error_log WHERE sessionId=? ORDER BY timestamp DESC LIMIT ?';
-          params = [sessionId, limit];
+          q = 'SELECT * FROM agent_memory_summaries WHERE sessionId=? ORDER BY id DESC LIMIT 10';
+          params = [sessionId];
         } else {
-          q = 'SELECT * FROM error_log ORDER BY timestamp DESC LIMIT ?';
+          q = 'SELECT * FROM agent_memory_summaries ORDER BY id DESC LIMIT 10';
+          params = [];
+        }
+        const { results } = await env.DB.prepare(q).bind(...params).all();
+        return json(results);
+      }
+
+      // ── MEMORY SUMMARY BY PROJECT ─────────────────────────────
+      if (path === '/api/memory/summary' && method === 'GET') {
+        const projectId = url.searchParams.get('project_id');
+        const limit = Math.min(parseInt(url.searchParams.get('limit') || '5', 10), 20);
+        let q, params;
+        if (projectId) {
+          q = 'SELECT * FROM agent_memory_summaries WHERE project_id=? ORDER BY id DESC LIMIT ?';
+          params = [projectId, limit];
+        } else {
+          q = 'SELECT * FROM agent_memory_summaries ORDER BY id DESC LIMIT ?';
           params = [limit];
         }
-        const stmt = env.DB.prepare(q);
-        const { results } = await stmt.bind(...params).all();
+        const { results } = await env.DB.prepare(q).bind(...params).all();
         return json(results);
+      }
+
+      // ── TELEGRAM TEST ────────────────────────────────────────
+      if (path === '/api/telegram/test' && method === 'POST') {
+        const { telegramBotToken, telegramChatId } = await request.json();
+        if (!telegramBotToken || !telegramChatId) {
+          return json({ error: 'telegramBotToken and telegramChatId are required' }, 400);
+        }
+        try {
+          const resp = await fetch(`https://api.telegram.org/bot${telegramBotToken}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: telegramChatId,
+              text: '✅ BrainForge Telegram notifications are working!'
+            })
+          });
+          const data = await resp.json();
+          if (!resp.ok) return json({ error: data.description || 'Telegram API error' }, 400);
+          return json({ success: true, messageId: data.result?.message_id });
+        } catch (e) {
+          return json({ error: e.message }, 500);
+        }
+      }
+
+      // ── AI CONFIG (secure key storage) ───────────────────────
+      if (path === '/api/config' && method === 'GET') {
+        const { results } = await env.DB.prepare(
+          'SELECT key, updated_at FROM ai_config ORDER BY key ASC'
+        ).all();
+        return json(results);
+      }
+      if (path === '/api/config' && method === 'POST') {
+        const body = await request.json();
+        const now = new Date().toISOString();
+        for (const [k, v] of Object.entries(body)) {
+          await env.DB.prepare(
+            'INSERT INTO ai_config (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at'
+          ).bind(k, String(v), now).run();
+        }
+        return json({ success: true, updated_at: now });
+      }
+      if (path.startsWith('/api/config/') && method === 'DELETE') {
+        const key = decodeURIComponent(path.split('/api/config/')[1]);
+        await env.DB.prepare('DELETE FROM ai_config WHERE key=?').bind(key).run();
+        return json({ success: true });
+      }
+
+      // ── UNIFIED PROXY (D1-backed key lookup) ──────────────────
+      // POST /api/proxy — { service, payload, endpoint? }
+      if (path === '/api/proxy' && method === 'POST') {
+        const body = await request.json();
+        const { service, payload, endpoint } = body;
+        if (!service) return json({ error: 'service is required' }, 400);
+        const cfgRows = await (async () => {
+          try {
+            const { results } = await env.DB.prepare('SELECT key, value FROM ai_config').all();
+            const m = {}; for (const r of results) m[r.key] = r.value; return m;
+          } catch (_) { return {}; }
+        })();
+        if (service === 'openrouter') {
+          const apiKey = cfgRows['openrouter_api_key'];
+          if (!apiKey) return json({ error: 'openrouter_api_key not configured. POST /api/config first.' }, 400);
+          const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://caffeine-brainforge.pages.dev', 'X-Title': 'BrainForge' },
+            body: JSON.stringify(payload)
+          });
+          return json(await resp.json(), resp.status);
+        }
+        if (service === 'github') {
+          const token = cfgRows['github_token'];
+          if (!token) return json({ error: 'github_token not configured. POST /api/config first.' }, 400);
+          const targetUrl = endpoint || 'https://api.github.com/';
+          const opts = { method: payload?.method || 'GET', headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28' } };
+          if (payload?.body) opts.body = JSON.stringify(payload.body);
+          const resp = await fetch(targetUrl, opts);
+          return json(await resp.json(), resp.status);
+        }
+        if (service === 'cloudflare') {
+          const token = cfgRows['cloudflare_token'];
+          if (!token) return json({ error: 'cloudflare_token not configured. POST /api/config first.' }, 400);
+          const targetUrl = endpoint || 'https://api.cloudflare.com/client/v4/';
+          const opts = { method: payload?.method || 'GET', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } };
+          if (payload?.body) opts.body = JSON.stringify(payload.body);
+          const resp = await fetch(targetUrl, opts);
+          return json(await resp.json(), resp.status);
+        }
+        return json({ error: `Unknown service: ${service}` }, 400);
+      }
+
+      // ── STATS: Monthly cost & per-project ─────────────────────
+      if (path === '/api/stats' && method === 'GET') {
+        const monthStart = new Date();
+        monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+        const monthStartIso = monthStart.toISOString();
+        const totalThisMonth = await env.DB.prepare(
+          'SELECT SUM(estimated_cost_usd) as total FROM agent_sessions WHERE createdAt >= ?'
+        ).bind(monthStartIso).first();
+        const totalAllTime = await env.DB.prepare(
+          'SELECT SUM(estimated_cost_usd) as total FROM agent_sessions'
+        ).first();
+        const { results: sessionSummaries } = await env.DB.prepare(
+          'SELECT id, task, status, estimated_cost_usd, total_prompt_tokens, total_completion_tokens, createdAt FROM agent_sessions ORDER BY createdAt DESC LIMIT 20'
+        ).all();
+        return json({
+          cost_this_month_usd: totalThisMonth?.total || 0,
+          cost_all_time_usd: totalAllTime?.total || 0,
+          month_start: monthStartIso,
+          recent_sessions: sessionSummaries
+        });
+      }
+
+      // ── PROXY: OPENROUTER ────────────────────────────────────
+      if (path === '/api/proxy/openrouter' && method === 'POST') {
+        const body = await request.json();
+        const { openRouterApiKey, ...payload } = body;
+        if (!openRouterApiKey) return json({ error: 'openRouterApiKey is required' }, 400);
+        const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${openRouterApiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://caffeine-brainforge.pages.dev',
+            'X-Title': 'BrainForge'
+          },
+          body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        return json(data, resp.status);
+      }
+
+      // ── PROXY: GITHUB ────────────────────────────────────────
+      if (path === '/api/proxy/github' && method === 'POST') {
+        const body = await request.json();
+        const { githubToken, githubUrl, githubMethod = 'GET', githubBody } = body;
+        if (!githubToken || !githubUrl) return json({ error: 'githubToken and githubUrl are required' }, 400);
+        const opts = {
+          method: githubMethod,
+          headers: {
+            Authorization: `Bearer ${githubToken}`,
+            Accept: 'application/vnd.github+json',
+            'Content-Type': 'application/json',
+            'X-GitHub-Api-Version': '2022-11-28'
+          }
+        };
+        if (githubBody) opts.body = JSON.stringify(githubBody);
+        const resp = await fetch(githubUrl, opts);
+        const data = await resp.json();
+        return json(data, resp.status);
+      }
+
+      // ── PROXY: CLOUDFLARE ────────────────────────────────────
+      if (path === '/api/proxy/cloudflare' && method === 'POST') {
+        const body = await request.json();
+        const { cloudflareToken, cloudflareUrl, cloudflareMethod = 'GET', cloudflareBody } = body;
+        if (!cloudflareToken || !cloudflareUrl) return json({ error: 'cloudflareToken and cloudflareUrl are required' }, 400);
+        const opts = {
+          method: cloudflareMethod,
+          headers: {
+            Authorization: `Bearer ${cloudflareToken}`,
+            'Content-Type': 'application/json'
+          }
+        };
+        if (cloudflareBody) opts.body = JSON.stringify(cloudflareBody);
+        const resp = await fetch(cloudflareUrl, opts);
+        const data = await resp.json();
+        return json(data, resp.status);
+      }
+
+      // ── SSE STREAM ───────────────────────────────────────────
+      if (path === '/api/stream' && method === 'GET') {
+        const sessionId = url.searchParams.get('sessionId');
+        if (!sessionId) return json({ error: 'sessionId query param required' }, 400);
+
+        const db = env.DB;
+        let lastSentActivityId = 0;
+        let closed = false;
+        const startTime = Date.now();
+        const MAX_DURATION_MS = 10 * 60 * 1000; // 10 minutes
+
+        const stream = new ReadableStream({
+          async start(controller) {
+            const encode = (data) => new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`);
+
+            const tick = async () => {
+              if (closed) return;
+              if (Date.now() - startTime > MAX_DURATION_MS) {
+                controller.enqueue(encode({ type: 'done', status: 'timeout' }));
+                controller.close();
+                closed = true;
+                return;
+              }
+
+              try {
+                // Fetch session status
+                const row = await db.prepare(
+                  'SELECT id, task, status, currentStep, currentTool, approvalPendingToolName, approvalPendingArgs, total_prompt_tokens, total_completion_tokens, estimated_cost_usd FROM agent_sessions WHERE id=?'
+                ).bind(sessionId).first();
+
+                if (!row) {
+                  controller.enqueue(encode({ type: 'done', status: 'not_found' }));
+                  controller.close();
+                  closed = true;
+                  return;
+                }
+
+                // Emit status event
+                controller.enqueue(encode({
+                  type: 'status',
+                  sessionId: row.id,
+                  status: row.status,
+                  currentStep: row.currentStep,
+                  currentTool: row.currentTool,
+                  approvalPendingToolName: row.approvalPendingToolName,
+                  approvalPendingArgs: row.approvalPendingArgs,
+                  totalPromptTokens: row.total_prompt_tokens,
+                  totalCompletionTokens: row.total_completion_tokens,
+                  estimatedCostUsd: row.estimated_cost_usd
+                }));
+
+                // Fetch new activity entries since last sent
+                const { results: newEntries } = await db.prepare(
+                  'SELECT * FROM agent_activity WHERE sessionId=? AND id > ? ORDER BY id ASC LIMIT 5'
+                ).bind(sessionId, lastSentActivityId).all();
+
+                if (newEntries && newEntries.length > 0) {
+                  controller.enqueue(encode({ type: 'activity', entries: newEntries }));
+                  lastSentActivityId = newEntries[newEntries.length - 1].id;
+                }
+
+                // Check terminal status
+                const terminalStatuses = ['completed', 'failed', 'stopped'];
+                if (terminalStatuses.includes(row.status)) {
+                  controller.enqueue(encode({ type: 'done', status: row.status }));
+                  controller.close();
+                  closed = true;
+                  return;
+                }
+
+                // Schedule next tick
+                setTimeout(tick, 500);
+              } catch (e) {
+                controller.enqueue(encode({ type: 'error', message: e.message }));
+                controller.close();
+                closed = true;
+              }
+            };
+
+            // Start first tick
+            await tick();
+          },
+          cancel() {
+            closed = true;
+          }
+        });
+
+        return new Response(stream, {
+          headers: {
+            ...CORS,
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive'
+          }
+        });
       }
 
       return json({ error: 'Not found' }, 404);
