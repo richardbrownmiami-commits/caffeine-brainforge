@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { Link, useMatchRoute } from "@tanstack/react-router";
 import {
   Bot,
+  BrainCircuit,
   FolderOpen,
   Globe,
   Menu,
@@ -36,6 +37,7 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
   const isAgent = !!matchRoute({ to: "/agent" });
   const isBrowser = !!matchRoute({ to: "/browser" });
   const isApiTools = !!matchRoute({ to: "/api-tools" });
+  const isMaster = !!matchRoute({ to: "/master" });
 
   const [dark, setDark] = useState(
     () => localStorage.getItem("bf_theme") !== "light",
@@ -113,6 +115,20 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
         >
           <Bot className="w-4 h-4" />
           Agent
+        </Link>
+        <Link
+          to="/master"
+          data-ocid="nav.master.link"
+          onClick={onClose}
+          className={cn(
+            "nav-item flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-all",
+            isMaster
+              ? "nav-item-active text-foreground font-medium"
+              : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground",
+          )}
+        >
+          <BrainCircuit className="w-4 h-4" />
+          Master Agent
         </Link>
         <Link
           to="/browser"
