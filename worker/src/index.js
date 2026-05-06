@@ -574,7 +574,7 @@ async function runAgentLoop(session, db, ctx, env) {
         // Fallback to alternative model on quota exhaustion
         if (isQuotaError && session.credentials.openRouterApiKey) {
           try {
-            const fallbackModel = 'google/gemini-flash-1.5';
+            const fallbackModel = 'google/gemini-flash-1.5:free';
             const fallbackBody = JSON.stringify({
               model: fallbackModel,
               messages,
