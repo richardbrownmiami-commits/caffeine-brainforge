@@ -146,7 +146,7 @@ function EditorSidebar({
         <button
           type="button"
           onClick={() => {
-            navigate({ to: "/settings" });
+            navigate({ to: "/master" });
             onClose();
           }}
           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-white/5 hover:text-foreground transition-all"
