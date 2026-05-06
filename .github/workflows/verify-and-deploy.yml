@@ -15,14 +15,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: pnpm
+          cache-dependency-path: src/frontend/package.json
 
       - name: Install dependencies
         working-directory: src/frontend
-        run: npm install
+        run: pnpm install --no-frozen-lockfile
 
       # ────────────────────────────────────────────────────────────
       # STAGE 1 — SYNTAX CHECK (biome)
@@ -32,11 +39,11 @@ jobs:
         working-directory: src/frontend
         run: |
           echo "::group::biome check"
-          if ! npm run check; then
+          if ! pnpm run check; then
             echo "Syntax issues found — attempting auto-fix (attempt 1/2)…"
-            npm run fix || true
+            pnpm run fix || true
             echo "Retrying biome check after fix…"
-            npm run check
+            pnpm run check
           fi
           echo "::endgroup::"
 
@@ -57,21 +64,21 @@ jobs:
         id: typecheck_1
         working-directory: src/frontend
         continue-on-error: true
-        run: npm run typecheck
+        run: pnpm typecheck
 
       - name: Stage 3 · Auto-fix on TS failure
         if: steps.typecheck_1.outcome == 'failure'
         working-directory: src/frontend
         run: |
           echo "TypeScript check failed — running biome fix and retrying (attempt 2/2)…"
-          npm run fix || true
+          pnpm run fix || true
 
       - name: Stage 3 · TypeScript dry-run (attempt 2)
         id: typecheck_2
         if: steps.typecheck_1.outcome == 'failure'
         working-directory: src/frontend
         continue-on-error: true
-        run: npm run typecheck
+        run: pnpm typecheck
 
       # ────────────────────────────────────────────────────────────
       # STAGE 4 — AUTO-FIX LOOP: handle 2nd failure
@@ -85,7 +92,7 @@ jobs:
           git diff > verify-report.txt
           echo "" >> verify-report.txt
           echo "=== TypeScript errors ===" >> verify-report.txt
-          cd src/frontend && npm run typecheck 2>&1 >> ../../verify-report.txt || true
+          cd src/frontend && pnpm typecheck 2>&1 >> ../../verify-report.txt || true
 
       - name: Stage 4 · Upload verify-report artifact
         if: |
@@ -119,10 +126,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: pnpm
+          cache-dependency-path: src/frontend/package.json
 
       # ────────────────────────────────────────────────────────────
       # STAGE 5 — CONDITIONAL DEPLOY
@@ -139,11 +153,11 @@ jobs:
       # --- Build frontend ---
       - name: Install frontend dependencies
         working-directory: src/frontend
-        run: npm install
+        run: pnpm install --no-frozen-lockfile
 
       - name: Build frontend
         working-directory: src/frontend
-        run: npm run build
+        run: pnpm build
 
       # --- Deploy Pages ---
       - name: Stage 5 · Deploy Pages
