@@ -230,7 +230,7 @@ export default function MasterAgentPage() {
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [agentOnline, setAgentOnline] = useState<boolean | null>(null);
-  const refreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
 
   const fetchTasks = async () => {
     try {
@@ -249,11 +249,17 @@ export default function MasterAgentPage() {
 
   useEffect(() => {
     fetchTasks();
-    refreshRef.current = setInterval(fetchTasks, 5000);
-    return () => {
-      if (refreshRef.current) clearInterval(refreshRef.current);
-    };
   }, []);
+
+  // Auto-poll only when there are pending or in-progress tasks
+  useEffect(() => {
+    const hasPending = tasks.some(
+      (t) => t.status === "pending" || t.status === "in_progress",
+    );
+    if (!hasPending) return;
+    const interval = setInterval(fetchTasks, 5000);
+    return () => clearInterval(interval);
+  }, [tasks]);
 
   const showToast = (msg: string) => {
     setToast(msg);
