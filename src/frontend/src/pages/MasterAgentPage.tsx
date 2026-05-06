@@ -234,7 +234,7 @@ export default function MasterAgentPage() {
 
   const fetchTasks = async () => {
     try {
-      const res = await apiFetch(`/api/master/tasks?limit=50`);
+      const res = await apiFetch("/api/master/tasks?limit=50");
       if (res.ok) {
         const data: Task[] = await res.json();
         setTasks(data);
@@ -431,10 +431,8 @@ export default function MasterAgentPage() {
                 border: "1px solid #1e1e2e",
                 lineHeight: "1.6",
               }}
-              onFocus={(e) =>
-                (e.target.style.borderColor = "rgba(124,58,237,0.5)")
-              }
-              onBlur={(e) => (e.target.style.borderColor = "#1e1e2e")}
+              onFocus={(e) => { e.target.style.borderColor = "rgba(124,58,237,0.5)"; }}
+              onBlur={(e) => { e.target.style.borderColor = "#1e1e2e"; }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && e.ctrlKey) handleAddTask();
               }}
@@ -478,10 +476,8 @@ export default function MasterAgentPage() {
                 placeholder="user"
                 className="w-full rounded-lg px-3 py-2 text-sm text-zinc-300 focus:outline-none transition-colors"
                 style={{ background: "#0a0a0f", border: "1px solid #1e1e2e" }}
-                onFocus={(e) =>
-                  (e.target.style.borderColor = "rgba(124,58,237,0.5)")
-                }
-                onBlur={(e) => (e.target.style.borderColor = "#1e1e2e")}
+                onFocus={(e) => { e.target.style.borderColor = "rgba(124,58,237,0.5)"; }}
+                onBlur={(e) => { e.target.style.borderColor = "#1e1e2e"; }}
               />
             </div>
 
@@ -666,3 +662,4 @@ function ActivityRow({ task }: { task: Task }) {
     </div>
   );
 }
+
