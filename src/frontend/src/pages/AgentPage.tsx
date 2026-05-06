@@ -61,11 +61,9 @@ interface AgentStatus {
 }
 
 interface AgentStats {
-  total_runs?: number;
-  successful_runs?: number;
-  failed_runs?: number;
-  total_cost_usd?: number;
-  last_run_at?: string;
+  cost_this_month_usd?: number;
+  cost_all_time_usd?: number;
+  recent_sessions?: Array<{ status?: string; timestamp?: string }>;
 }
 
 interface MemorySummary {
@@ -403,15 +401,15 @@ export default function AgentPage() {
   const isRunning = status.state === "running";
   const isIdle = status.state === "idle";
   const isWaiting = status.state === "waiting-approval";
-  const totalRuns = stats?.total_runs ?? (status.totalRuns ?? history.length);
-  const successRate = stats != null && stats.total_runs
-    ? Math.round(((stats.successful_runs || 0) / stats.total_runs) * 100)
+  const recentSessions = stats?.recent_sessions ?? [];
+  const totalRuns = recentSessions.length > 0 ? recentSessions.length : (status.totalRuns ?? history.length);
+  const successRate = recentSessions.length > 0
+    ? Math.round((recentSessions.filter((s) => s.status === "completed").length / recentSessions.length) * 100)
     : status.successRate != null ? status.successRate
     : history.length > 0
       ? Math.round((history.filter((h) => h.result === "completed").length / history.length) * 100)
       : 0;
-  const totalCost = stats?.total_cost_usd ?? 0;
-  const lastRunTime = stats?.last_run_at ?? (status.lastRunTime ?? history[0]?.timestamp);
+  const totalCost = stats?.cost_this_month_usd ?? 0;
 
   return (
     <div className="flex flex-col h-full bg-background overflow-hidden">
@@ -648,12 +646,11 @@ export default function AgentPage() {
           </Card>
 
           {/* Stats Bar */}
-          <div data-ocid="agent.stats_panel" className="grid grid-cols-4 gap-3">
+          <div data-ocid="agent.stats_panel" className="grid grid-cols-3 gap-3">
             {[
-              { label: "Total Runs", value: String(totalRuns) },
+              { label: "Sessions", value: String(totalRuns) },
               { label: "Success Rate", value: `${successRate}%` },
-              { label: "Total Cost", value: `$${totalCost.toFixed(4)}` },
-              { label: "Last Run", value: lastRunTime ? new Date(lastRunTime).toLocaleDateString() : "—" },
+              { label: "Cost (Month)", value: `$${totalCost.toFixed(4)}` },
             ].map(({ label, value }) => (
               <Card key={label} className="border-border shadow-none" style={{ background: "#12121a" }}>
                 <CardContent className="px-4 py-3 text-center">
