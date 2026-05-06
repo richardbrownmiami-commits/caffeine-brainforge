@@ -534,6 +534,7 @@ async function runAgentLoop(session, db, ctx, env) {
 
     // Call OpenRouter
     let aiResponse;
+    let goto_continue = false;
     try {
       const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
@@ -552,16 +553,56 @@ async function runAgentLoop(session, db, ctx, env) {
 
       if (!resp.ok) {
         const errBody = await resp.text();
-        const now = new Date().toISOString();
-        await db.prepare(
-          'INSERT INTO error_log (sessionId, tool, error_type, errorMsg, stack_trace, context_json, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)'
-        ).bind(session.id, 'openrouter', 'openrouter_error', `HTTP ${resp.status}`, errBody.slice(0, 500), null, now).run();
-        await db.prepare(
-          `UPDATE agent_sessions SET status='failed', updatedAt=? WHERE id=?`
-        ).bind(now, session.id).run();
-        await sendTelegramNotification(session.credentials, task, 'failed', session.currentStep, estimatedCostUsd, `HTTP ${resp.status}`, env);
-        await generateAndSaveMemorySummary(session, db, task, session.currentStep, toolsUsed, 'OpenRouter HTTP error', 'failed');
-        return;
+        const isQuotaError = resp.status === 429 || resp.status === 402 || resp.status === 4006
+          || errBody.includes('quota') || errBody.includes('rate limit') || errBody.includes('insufficient');
+        // Fallback to alternative model on quota exhaustion
+        if (isQuotaError && session.credentials.openRouterApiKey) {
+          try {
+            const fallbackModel = 'google/gemini-flash-1.5';
+            const fallbackBody = JSON.stringify({
+              model: fallbackModel,
+              messages,
+              max_tokens: 1024
+            });
+            const fallbackResp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${session.credentials.openRouterApiKey}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://caffeine-brainforge.pages.dev',
+                'X-Title': 'BrainForge Agent Fallback'
+              },
+              body: fallbackBody
+            });
+            if (fallbackResp.ok) {
+              const fallbackData = await fallbackResp.json();
+              aiResponse = fallbackData.choices?.[0]?.message?.content || '';
+              if (aiResponse) {
+                // Successfully fell back, continue processing
+                // Log the fallback
+                await db.prepare(
+                  'INSERT INTO error_log (sessionId, tool, error_type, errorMsg, timestamp) VALUES (?, ?, ?, ?, ?)'
+                ).bind(session.id, 'openrouter', 'fallback_used', `Primary model quota exceeded, fell back to ${fallbackModel}`, new Date().toISOString()).run();
+                // Skip the rest of the error handling and continue
+                goto_continue = true;
+              }
+            }
+          } catch (_fallbackErr) {
+            // Fallback also failed, proceed with original error handling
+          }
+        }
+        if (!goto_continue) {
+          const now = new Date().toISOString();
+          await db.prepare(
+            'INSERT INTO error_log (sessionId, tool, error_type, errorMsg, stack_trace, context_json, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)'
+          ).bind(session.id, 'openrouter', 'openrouter_error', `HTTP ${resp.status}`, errBody.slice(0, 500), null, now).run();
+          await db.prepare(
+            `UPDATE agent_sessions SET status='failed', updatedAt=? WHERE id=?`
+          ).bind(now, session.id).run();
+          await sendTelegramNotification(session.credentials, task, 'failed', session.currentStep, estimatedCostUsd, `HTTP ${resp.status}`, env);
+          await generateAndSaveMemorySummary(session, db, task, session.currentStep, toolsUsed, 'OpenRouter HTTP error', 'failed');
+          return;
+        }
       }
 
       const data = await resp.json();
@@ -1347,6 +1388,22 @@ export default {
         });
       }
 
+      // ── FEEDBACK ─────────────────────────────────────────────────
+      if (path === '/api/feedback' && method === 'POST') {
+        try {
+          const body = await request.json();
+          const message = body.message || '';
+          const timestamp = body.timestamp || new Date().toISOString();
+          if (!message) return json({ error: 'message is required' }, 400);
+          await env.DB.prepare(
+            'INSERT INTO error_log (sessionId, tool, error_type, errorMsg, timestamp) VALUES (?, ?, ?, ?, ?)'
+          ).bind(null, 'feedback', 'feedback', message, timestamp).run();
+          return json({ success: true });
+        } catch (e) {
+          return json({ error: e.message }, 500);
+        }
+      }
+
       return json({ error: 'Not found' }, 404);
     } catch (err) {
       console.error(err);
@@ -1354,3 +1411,4 @@ export default {
     }
   }
 };
+
