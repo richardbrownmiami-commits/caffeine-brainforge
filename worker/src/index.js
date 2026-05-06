@@ -1,4 +1,20 @@
-// BrainForge Cloudflare Worker API
+// Brai
+
+  // master_agent_tasks for Master Agent task queue
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS master_agent_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      instruction TEXT NOT NULL,
+      added_by TEXT DEFAULT 'user',
+      status TEXT DEFAULT 'pending',
+      priority INTEGER DEFAULT 5,
+      result TEXT,
+      error TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run();
+nForge Cloudflare Worker API
 // Tables: projects, messages, settings, model_claims, snapshots, ai_memory, ai_rules
 //         agent_sessions, agent_activity, error_log, agent_memory_summaries, ai_config
 
@@ -1386,6 +1402,95 @@ export default {
             'Connection': 'keep-alive'
           }
         });
+      }
+
+
+      // ── MASTER AGENT TASK QUEUE ──────────────────────────────
+
+      // POST /api/master/task — add new task
+      if (path === '/api/master/task' && method === 'POST') {
+        if (!checkSecret(request)) return json({ error: 'Unauthorized' }, 401);
+        const body = await request.json();
+        const { instruction, added_by = 'user', priority = 5 } = body;
+        if (!instruction) return json({ error: 'instruction is required' }, 400);
+        const now = new Date().toISOString();
+        const result = await env.DB.prepare(
+          'INSERT INTO master_agent_tasks (instruction, added_by, status, priority, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+        ).bind(instruction, added_by, 'pending', priority, now, now).run();
+        const taskId = result.meta?.last_row_id;
+        return json({ success: true, id: taskId, instruction, status: 'pending' });
+      }
+
+      // GET /api/master/tasks — list tasks with optional filter
+      if (path === '/api/master/tasks' && method === 'GET') {
+        if (!checkSecret(request)) return json({ error: 'Unauthorized' }, 401);
+        const statusFilter = url.searchParams.get('status');
+        const limit = Math.min(parseInt(url.searchParams.get('limit') || '20', 10), 100);
+        let q, params;
+        if (statusFilter) {
+          q = 'SELECT * FROM master_agent_tasks WHERE status=? ORDER BY priority DESC, created_at ASC LIMIT ?';
+          params = [statusFilter, limit];
+        } else {
+          q = 'SELECT * FROM master_agent_tasks ORDER BY priority DESC, created_at ASC LIMIT ?';
+          params = [limit];
+        }
+        const { results } = await env.DB.prepare(q).bind(...params).all();
+        return json(results);
+      }
+
+      // PUT /api/master/task/:id — update task status/result/error
+      if (path.match(/^\/api\/master\/task\/\d+$/) && method === 'PUT') {
+        if (!checkSecret(request)) return json({ error: 'Unauthorized' }, 401);
+        const taskId = parseInt(path.split('/').pop(), 10);
+        const body = await request.json();
+        const { status, result, error } = body;
+        const now = new Date().toISOString();
+        const fields = [];
+        const vals = [];
+        if (status !== undefined) { fields.push('status=?'); vals.push(status); }
+        if (result !== undefined) { fields.push('result=?'); vals.push(result); }
+        if (error !== undefined) { fields.push('error=?'); vals.push(error); }
+        fields.push('updated_at=?'); vals.push(now);
+        vals.push(taskId);
+        await env.DB.prepare(`UPDATE master_agent_tasks SET ${fields.join(', ')} WHERE id=?`).bind(...vals).run();
+        const updated = await env.DB.prepare('SELECT id, status, result, error, updated_at FROM master_agent_tasks WHERE id=?').bind(taskId).first();
+        return json({ success: true, updated });
+      }
+
+      // DELETE /api/master/task/:id — delete a task
+      if (path.match(/^\/api\/master\/task\/\d+$/) && method === 'DELETE') {
+        if (!checkSecret(request)) return json({ error: 'Unauthorized' }, 401);
+        const taskId = parseInt(path.split('/').pop(), 10);
+        await env.DB.prepare('DELETE FROM master_agent_tasks WHERE id=?').bind(taskId).run();
+        return json({ success: true });
+      }
+
+      // GET /api/master/next — get next pending task (auto sets in_progress)
+      if (path === '/api/master/next' && method === 'GET') {
+        if (!checkSecret(request)) return json({ error: 'Unauthorized' }, 401);
+        const task = await env.DB.prepare(
+          "SELECT * FROM master_agent_tasks WHERE status='pending' ORDER BY priority DESC, created_at ASC LIMIT 1"
+        ).first();
+        if (!task) return json({ task: null });
+        const now = new Date().toISOString();
+        await env.DB.prepare(
+          "UPDATE master_agent_tasks SET status='in_progress', updated_at=? WHERE id=?"
+        ).bind(now, task.id).run();
+        return json({ task: { ...task, status: 'in_progress', updated_at: now } });
+      }
+
+      // POST /api/master/complete/:id — mark task done or failed
+      if (path.match(/^\/api\/master\/complete\/\d+$/) && method === 'POST') {
+        if (!checkSecret(request)) return json({ error: 'Unauthorized' }, 401);
+        const taskId = parseInt(path.split('/').pop(), 10);
+        const body = await request.json();
+        const { result, error } = body;
+        const status = error ? 'failed' : 'done';
+        const now = new Date().toISOString();
+        await env.DB.prepare(
+          'UPDATE master_agent_tasks SET status=?, result=?, error=?, updated_at=? WHERE id=?'
+        ).bind(status, result || null, error || null, now, taskId).run();
+        return json({ success: true });
       }
 
       // ── FEEDBACK ─────────────────────────────────────────────────
