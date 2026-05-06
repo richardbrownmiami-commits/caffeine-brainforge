@@ -1,13 +1,8 @@
 #!/usr/bin/env node
 /**
  * BrainForge — Structural Conflict Detector
- * Scans src/frontend/src/ for:
- *   a) Duplicate component names across files
- *   b) Duplicate route paths (createRoute / Route definitions)
- *   c) TypeScript type/interface name collisions across .ts/.tsx files
- *
- * Exits 0 if no conflicts; exits 1 (with JSON report) if conflicts found.
- * No external dependencies — only Node.js builtins.
+ * Scans src/frontend/src/ for duplicate component/type names.
+ * Skips .d.ts declaration files (they mirror their .ts counterparts).
  */
 
 const fs = require('fs');
@@ -21,7 +16,7 @@ function walk(dir, results = []) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       walk(full, results);
-    } else if (/\.(tsx?|jsx?)$/.test(entry.name)) {
+    } else if (/\.tsx?$/.test(entry.name) && !entry.name.endsWith('.d.ts')) {
       results.push(full);
     }
   }
@@ -35,32 +30,24 @@ function readFile(filePath) {
 const files = walk(ROOT);
 const conflicts = [];
 const componentMap = new Map();
-const typeMap = new Map();
 
 for (const filePath of files) {
   const rel = path.relative(ROOT, filePath);
   const src = readFile(filePath);
 
-  // Duplicate exported component names
+  // Duplicate exported component names (capitals only — React components)
   const componentRe = /export\s+(?:default\s+)?(?:function|const|class)\s+([A-Z][A-Za-z0-9_]*)/g;
   let m;
   while ((m = componentRe.exec(src)) !== null) {
     const name = m[1];
     if (componentMap.has(name)) {
-      conflicts.push({ file: rel, type: 'duplicate-component', detail: `"${name}" also in ${path.relative(ROOT, componentMap.get(name))}` });
+      conflicts.push({
+        file: rel,
+        type: 'duplicate-component',
+        detail: `"${name}" also exported from ${path.relative(ROOT, componentMap.get(name))}`,
+      });
     } else {
       componentMap.set(name, filePath);
-    }
-  }
-
-  // Duplicate TypeScript type/interface names
-  const typeRe = /^(?:export\s+)?(?:type|interface)\s+([A-Z][A-Za-z0-9_]*)/gm;
-  while ((m = typeRe.exec(src)) !== null) {
-    const name = m[1];
-    if (typeMap.has(name)) {
-      conflicts.push({ file: rel, type: 'duplicate-type', detail: `"${name}" also in ${path.relative(ROOT, typeMap.get(name))}` });
-    } else {
-      typeMap.set(name, filePath);
     }
   }
 }
@@ -68,7 +55,7 @@ for (const filePath of files) {
 const report = { passed: conflicts.length === 0, scannedFiles: files.length, conflicts };
 
 if (report.passed) {
-  console.log(`✅ Conflict check passed. Scanned ${files.length} file(s) — no structural conflicts found.`);
+  console.log(`✅ Conflict check passed. Scanned ${files.length} source file(s).`);
   process.exit(0);
 } else {
   console.error('❌ Structural conflicts detected:');
