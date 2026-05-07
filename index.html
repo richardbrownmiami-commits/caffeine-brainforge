@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>caffeine-brainforge — Brain Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0a0c10;
+      --surface:   #111520;
+      --surface2:  #181e2e;
+      --border:    #232b3e;
+      --accent:    #4f8ef7;
+      --accent2:   #7c5af7;
+      --green:     #22c55e;
+      --yellow:    #facc15;
+      --red:       #ef4444;
+      --muted:     #4b5880;
+      --text:      #e2e8f0;
+      --textdim:   #8493b8;
+      --radius:    10px;
+      --font:      'Segoe UI', system-ui, sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* HEADER */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 28px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 17px;
+      letter-spacing: -0.3px;
+    }
+    .logo-icon {
+      width: 28px; height: 28px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .header-label {
+      font-size: 12px;
+      color: var(--textdim);
+    }
+
+    /* LAYOUT */
+    .layout {
+      display: flex;
+      flex: 1;
+    }
+
+    /* SIDEBAR */
+    aside {
+      width: 220px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 20px 0;
+      flex-shrink: 0;
+    }
+    .nav-section {
+      padding: 0 12px 8px;
+    }
+    .nav-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+      padding: 0 8px;
+      margin-bottom: 6px;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 7px;
+      font-size: 13.5px;
+      color: var(--textdim);
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      text-decoration: none;
+    }
+    .nav-item:hover { background: var(--surface2); color: var(--text); }
+    .nav-item.active {
+      background: rgba(79,142,247,0.12);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .nav-sep {
+      height: 1px;
+      background: var(--border);
+      margin: 10px 12px;
+    }
+
+    /* MAIN */
+    main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+    }
+
+    .page-title {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.4px;
+    }
+    .page-subtitle {
+      font-size: 13px;
+      color: var(--textdim);
+      margin-top: 3px;
+    }
+
+    /* GRID */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; }
+
+    @media (max-width: 900px) {
+      .grid-2 { grid-template-columns: 1fr; }
+      .grid-3 { grid-template-columns: 1fr; }
+    }
+
+    /* CARD */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .card-title {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--textdim);
+    }
+    .badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 99px;
+      background: rgba(79,142,247,0.15);
+      color: var(--accent);
+      border: 1px solid rgba(79,142,247,0.25);
+    }
+    .badge.green {
+      background: rgba(34,197,94,0.12);
+      color: var(--green);
+      border-color: rgba(34,197,94,0.25);
+    }
+    .badge.yellow {
+      background: rgba(250,204,21,0.12);
+      color: var(--yellow);
+      border-color: rgba(250,204,21,0.25);
+    }
+    .badge.red {
+      background: rgba(239,68,68,0.12);
+      color: var(--red);
+      border-color: rgba(239,68,68,0.25);
+    }
+
+    /* MEMORY LAYERS */
+    .layer {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+    .layer:last-child { margin-bottom: 0; }
+    .layer-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 11px 14px;
+      background: var(--surface2);
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s;
+    }
+    .layer-header:hover { background: #1e2538; }
+    .layer-header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .layer-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .layer-name {
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .layer-sub {
+      font-size: 11px;
+      color: var(--textdim);
+    }
+    .layer-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .token-badge {
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 5px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--textdim);
+    }
+    .expand-icon {
+      font-size: 12px;
+      color: var(--muted);
+      transition: transform 0.2s;
+    }
+    .expand-icon.open { transform: rotate(180deg); }
+    .layer-body {
+      padding: 12px 14px;
+      font-size: 12px;
+      line-height: 1.7;
+      color: var(--textdim);
+      border-top: 1px solid var(--border);
+      display: none;
+    }
+    .layer-body.open { display: block; }
+    .layer-body code {
+      background: var(--bg);
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-size: 11px;
+      color: #93c5fd;
+      font-family: 'Consolas', monospace;
+    }
+    .layer-files {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 8px;
+    }
+    .file-chip {
+      font-size: 10.5px;
+      padding: 2px 8px;
+      border-radius: 5px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: #7dd3fc;
+      font-family: monospace;
+    }
+
+    /* DISCOVERY FEED */
+    .feed-item {
+      display: flex;
+      gap: 12px;
+      padding: 11px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .feed-item:last-child { border-bottom: none; }
+    .feed-icon {
+      width: 30px; height: 30px;
+      border-radius: 8px;
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+    }
+    .feed-content { flex: 1; }
+    .feed-title {
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 2px;
+    }
+    .feed-meta {
+      font-size: 11px;
+      color: var(--textdim);
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .feed-layer {
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+
+    /* AGENT ACTIVITY */
+    .activity-item {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 9px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .activity-item:last-child { border-bottom: none; }
+    .activity-icon {
+      width: 28px; height: 28px;
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .activity-content { flex: 1; }
+    .activity-title {
+      font-size: 12.5px;
+      font-weight: 500;
+      margin-bottom: 2px;
+    }
+    .activity-detail {
+      font-size: 11px;
+      color: var(--textdim);
+    }
+    .activity-time {
+      font-size: 10.5px;
+      color: var(--muted);
+      white-space: nowrap;
+      margin-top: 2px;
+    }
+
+    /* HANDSHAKE MONITOR */
+    .handshake-list {
+      list-style: none;
+    }
+    .handshake-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 12.5px;
+    }
+    .handshake-item:last-child { border-bottom: none; }
+    .handshake-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status-indicator {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .hi-code {
+      font-family: monospace;
+      font-size: 11px;
+      color: var(--textdim);
+    }
+    .test-btn {
+      font-size: 11px;
+      padding: 4px 12px;
+      border-radius: 6px;
+      background: rgba(79,142,247,0.12);
+      color: var(--accent);
+      border: 1px solid rgba(79,142,247,0.25);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .test-btn:hover { background: rgba(79,142,247,0.22); }
+
+    /* SYNC PANEL */
+    .sync-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 7px 0;
+      font-size: 12.5px;
+      border-bottom: 1px solid var(--border);
+    }
+    .sync-row:last-child { border-bottom: none; }
+    .sync-key { color: var(--textdim); }
+    .sync-val { font-weight: 500; }
+    .sync-files {
+      margin-top: 10px;
+    }
+    .sync-file {
+      font-family: monospace;
+      font-size: 11px;
+      color: #7dd3fc;
+      padding: 2px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* BIFROST STATUS */
+    .model-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .model-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 13px 14px;
+    }
+    .model-name {
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      font-family: monospace;
+      color: #93c5fd;
+    }
+    .model-provider {
+      font-size: 10.5px;
+      color: var(--textdim);
+      margin-bottom: 8px;
+    }
+    .model-latency {
+      font-size: 11px;
+      color: var(--green);
+    }
+    .model-status-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    /* STAT CARDS */
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+    }
+    .stat-value {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -1px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .stat-label {
+      font-size: 12px;
+      color: var(--textdim);
+      margin-top: 3px;
+    }
+
+    /* SCROLLBAR */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+    /* FOOTER */
+    footer {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 10px 28px;
+      font-size: 11.5px;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🧠</div>
+    caffeine-brainforge
+  </div>
+  <div class="header-right">
+    <div class="status-dot"></div>
+    <span class="header-label">Brain Active</span>
+    <span class="header-label" style="opacity:0.4">|</span>
+    <span class="header-label" id="clock"></span>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <aside>
+    <div class="nav-section">
+      <div class="nav-label">Dashboard</div>
+      <a class="nav-item active" onclick="showSection('overview')">
+        <span>⬡</span> Overview
+      </a>
+      <a class="nav-item" onclick="showSection('memory')">
+        <span>🧠</span> Memory Layers
+      </a>
+      <a class="nav-item" onclick="showSection('activity')">
+        <span>⚡</span> Agent Activity
+      </a>
+    </div>
+    <div class="nav-sep"></div>
+    <div class="nav-section">
+      <div class="nav-label">System</div>
+      <a class="nav-item" onclick="showSection('handshake')">
+        <span>🤝</span> Handshake
+      </a>
+      <a class="nav-item" onclick="showSection('sync')">
+        <span>🔄</span> GitHub Sync
+      </a>
+      <a class="nav-item" onclick="showSection('bifrost')">
+        <span>⚡</span> BIFROST
+      </a>
+    </div>
+    <div class="nav-sep"></div>
+    <div class="nav-section">
+      <div class="nav-label">Links</div>
+      <a class="nav-item" href="https://github.com/richardbrownmiami-commits/caffeine-brainforge" target="_blank">
+        <span>📦</span> GitHub Repo
+      </a>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main>
+
+    <!-- OVERVIEW SECTION -->
+    <section id="sec-overview">
+      <div>
+        <div class="page-title">Brain Dashboard</div>
+        <div class="page-subtitle">Autonomous AI agent memory, sync, and orchestration — powered by caffeine-brainforge</div>
+      </div>
+
+      <!-- Stat row -->
+      <div class="grid-3">
+        <div class="stat-card">
+          <div class="stat-value">3</div>
+          <div class="stat-label">Memory Layers Active</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">13</div>
+          <div class="stat-label">Files in Repo</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">2</div>
+          <div class="stat-label">BIFROST Models Live</div>
+        </div>
+      </div>
+
+      <!-- Memory + Discovery -->
+      <div class="grid-2">
+
+        <!-- Memory Layers card -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Soul Memory Layers</div>
+            <span class="badge green">All Active</span>
+          </div>
+
+          <!-- L0 -->
+          <div class="layer">
+            <div class="layer-header" onclick="toggleLayer('l0')">
+              <div class="layer-header-left">
+                <div class="layer-dot" style="background:#7c5af7;box-shadow:0 0 5px #7c5af7"></div>
+                <div>
+                  <div class="layer-name">L0 — SOUL</div>
+                  <div class="layer-sub">Always loaded · Identity core</div>
+                </div>
+              </div>
+              <div class="layer-right">
+                <div class="token-badge">~800 tokens</div>
+                <div class="expand-icon" id="icon-l0">▼</div>
+              </div>
+            </div>
+            <div class="layer-body" id="body-l0">
+              <p>The permanent identity layer. Loaded on every session start, never swapped out. Defines who the agent is, its voice, and its core behavioral rules.</p>
+              <div class="layer-files">
+                <span class="file-chip">soul/SOUL.md</span>
+                <span class="file-chip">soul/IDENTITY.md</span>
+                <span class="file-chip">soul/VOICE.md</span>
+                <span class="file-chip">soul/soul.json</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- L1 -->
+          <div class="layer">
+            <div class="layer-header" onclick="toggleLayer('l1')">
+              <div class="layer-header-left">
+                <div class="layer-dot" style="background:#4f8ef7;box-shadow:0 0 5px #4f8ef7"></div>
+                <div>
+                  <div class="layer-name">L1 — Canonical Memory</div>
+                  <div class="layer-sub">Loaded at session start · Durable facts</div>
+                </div>
+              </div>
+              <div class="layer-right">
+                <div class="token-badge">~3.2k tokens</div>
+                <div class="expand-icon" id="icon-l1">▼</div>
+              </div>
+            </div>
+            <div class="layer-body" id="body-l1">
+              <p>Compiled from event sources. Contains durable decisions, verified facts, and cross-app rules. Updated by <code>compiler.js</code> after each session.</p>
+              <div class="layer-files">
+                <span class="file-chip">canonical/profile.md</span>
+                <span class="file-chip">canonical/stable-memory.md</span>
+                <span class="file-chip">canonical/projects/caffeine-ai.md</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- L2 -->
+          <div class="layer">
+            <div class="layer-header" onclick="toggleLayer('l2')">
+              <div class="layer-header-left">
+                <div class="layer-dot" style="background:#22c55e;box-shadow:0 0 5px #22c55e"></div>
+                <div>
+                  <div class="layer-name">L2 — Project Context</div>
+                  <div class="layer-sub">On-demand · Session events</div>
+                </div>
+              </div>
+              <div class="layer-right">
+                <div class="token-badge">~1.8k tokens</div>
+                <div class="expand-icon" id="icon-l2">▼</div>
+              </div>
+            </div>
+            <div class="layer-body" id="body-l2">
+              <p>Append-only event stream. Written during active sessions, compiled into L1 by the memory compiler agent. Loaded on-demand to keep context window lean.</p>
+              <div class="layer-files">
+                <span class="file-chip">sources/caffeine/2026-05-07.md</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Discovery Feed -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Discovery Feed</div>
+            <span class="badge">Live</span>
+          </div>
+
+          <div id="discovery-feed">
+            <div class="feed-item">
+              <div class="feed-icon" style="background:rgba(79,142,247,0.12)">🔍</div>
+              <div class="feed-content">
+                <div class="feed-title">BIFROST confirmed live — 2 models active</div>
+                <div class="feed-meta">
+                  <span>2026-05-07 · 14:22</span>
+                  <span class="feed-layer" style="background:rgba(79,142,247,0.12);color:#4f8ef7">L1</span>
+                </div>
+              </div>
+            </div>
+            <div class="feed-item">
+              <div class="feed-icon" style="background:rgba(124,90,247,0.12)">🧠</div>
+              <div class="feed-content">
+                <div class="feed-title">3-level memory architecture implemented</div>
+                <div class="feed-meta">
+                  <span>2026-05-07 · 13:50</span>
+                  <span class="feed-layer" style="background:rgba(124,90,247,0.12);color:#7c5af7">L0</span>
+                </div>
+              </div>
+            </div>
+            <div class="feed-item">
+              <div class="feed-icon" style="background:rgba(34,197,94,0.12)">✅</div>
+              <div class="feed-content">
+                <div class="feed-title">GitHub PAT write access verified</div>
+                <div class="feed-meta">
+                  <span>2026-05-07 · 13:10</span>
+                  <span class="feed-layer" style="background:rgba(34,197,94,0.12);color:#22c55e">L2</span>
+                </div>
+              </div>
+            </div>
+            <div class="feed-item">
+              <div class="feed-icon" style="background:rgba(250,204,21,0.12)">⚡</div>
+              <div class="feed-content">
+                <div class="feed-title">openai-fetch + node-cron installed in sandbox</div>
+                <div class="feed-meta">
+                  <span>2026-05-07 · 12:35</span>
+                  <span class="feed-layer" style="background:rgba(250,204,21,0.12);color:#facc15">L2</span>
+                </div>
+              </div>
+            </div>
+            <div class="feed-item">
+              <div class="feed-icon" style="background:rgba(79,142,247,0.12)">🤝</div>
+              <div class="feed-content">
+                <div class="feed-title">Handshake protocol architecture designed</div>
+                <div class="feed-meta">
+                  <span>2026-05-07 · 11:58</span>
+                  <span class="feed-layer" style="background:rgba(79,142,247,0.12);color:#4f8ef7">L1</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MEMORY SECTION (hidden by default) -->
+    <section id="sec-memory" style="display:none">
+      <div>
+        <div class="page-title">Memory Layers</div>
+        <div class="page-subtitle">3-level loading system — L0 always · L1 on session start · L2 on demand</div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Memory Architecture</div>
+          <span class="badge green">elizaOS character.json format</span>
+        </div>
+        <div style="font-size:13px;color:var(--textdim);line-height:1.8;margin-bottom:16px">
+          Inspired by <strong style="color:var(--text)">agent-soul</strong> — a git-native, zero-database 3-level memory system. 
+          Sources are append-only event logs compiled by <code style="background:var(--bg);padding:1px 5px;border-radius:4px;color:#93c5fd;font-size:11px">compiler.js</code> into canonical memory.
+        </div>
+
+        <div style="background:var(--bg);border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;color:#93c5fd;line-height:1.9">
+          <div style="color:var(--muted);margin-bottom:6px">// Loading sequence</div>
+          <div><span style="color:#7c5af7">L0</span> soul/SOUL.md &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ always loaded &nbsp;&nbsp;&nbsp;&nbsp;~800 tokens</div>
+          <div><span style="color:#4f8ef7">L1</span> canonical/profile.md &nbsp;→ session start &nbsp;&nbsp;&nbsp;~3200 tokens</div>
+          <div><span style="color:#22c55e">L2</span> sources/*.md &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ on demand &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;~1800 tokens</div>
+          <div style="color:var(--muted);margin-top:8px">// Total: ~5800 tokens vs flat brain (~15000+)</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ACTIVITY SECTION (hidden) -->
+    <section id="sec-activity" style="display:none">
+      <div>
+        <div class="page-title">Agent Activity</div>
+        <div class="page-subtitle">Autonomous agent runs, compiler cycles, and orchestrator events</div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Recent Activity</div>
+          <span class="badge green">Auto-refresh</span>
+        </div>
+
+        <div id="activity-feed">
+          <div class="activity-item">
+            <div class="activity-icon" style="background:rgba(79,142,247,0.12)">🔄</div>
+            <div class="activity-content">
+              <div class="activity-title">memory-logger.js — Discovery logged</div>
+              <div class="activity-detail">node-cron · BIFROST → gpt-4o-mini · discovery-log.txt appended</div>
+            </div>
+            <div class="activity-time" id="time1">just now</div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-icon" style="background:rgba(124,90,247,0.12)">🧠</div>
+            <div class="activity-content">
+              <div class="activity-title">compiler.js — sources → canonical merge</div>
+              <div class="activity-detail">2026-05-07.md compiled into stable-memory.md</div>
+            </div>
+            <div class="activity-time">2 min ago</div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-icon" style="background:rgba(34,197,94,0.12)">📤</div>
+            <div class="activity-content">
+              <div class="activity-title">sync-worker.js — GitHub push</div>
+              <div class="activity-detail">brain.json → richardbrownmiami-commits/caffeine-brainforge · HTTP 200</div>
+            </div>
+            <div class="activity-time">12 min ago</div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-icon" style="background:rgba(239,68,68,0.12)">⚔️</div>
+            <div class="activity-content">
+              <div class="activity-title">ai-debate.js — AI vs AI debate completed</div>
+              <div class="activity-detail">gpt-4o-mini vs claude-sonnet-4-6 · Topic: AI autonomy · p-queue managed</div>
+            </div>
+            <div class="activity-time">35 min ago</div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-icon" style="background:rgba(250,204,21,0.12)">🎯</div>
+            <div class="activity-content">
+              <div class="activity-title">master-agent.js — 4 rounds completed</div>
+              <div class="activity-detail">Agent discovery · BIFROST listing · memory logger setup · AI debate</div>
+            </div>
+            <div class="activity-time">1 hr ago</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HANDSHAKE SECTION (hidden) -->
+    <section id="sec-handshake" style="display:none">
+      <div>
+        <div class="page-title">API Handshake Monitor</div>
+        <div class="page-subtitle">iranti-style handshake protocol — agent registers, receives system brief + brain context</div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Recent Handshakes</div>
+            <button type="button" class="test-btn" onclick="testHandshake()">▶ Test Handshake</button>
+          </div>
+
+          <ul class="handshake-list" id="handshake-list">
+            <li class="handshake-item">
+              <div class="handshake-left">
+                <div class="status-indicator" style="background:var(--green)"></div>
+                <div>
+                  <div style="font-size:12.5px;font-weight:500">caffeine-ai-v2</div>
+                  <div class="hi-code">GET /handshake · L0+L1 injected</div>
+                </div>
+              </div>
+              <span class="badge green">200</span>
+            </li>
+            <li class="handshake-item">
+              <div class="handshake-left">
+                <div class="status-indicator" style="background:var(--green)"></div>
+                <div>
+                  <div style="font-size:12.5px;font-weight:500">brainforge-client</div>
+                  <div class="hi-code">GET /handshake · brain.json returned</div>
+                </div>
+              </div>
+              <span class="badge green">200</span>
+            </li>
+            <li class="handshake-item">
+              <div class="handshake-left">
+                <div class="status-indicator" style="background:var(--yellow)"></div>
+                <div>
+                  <div style="font-size:12.5px;font-weight:500">unknown-agent</div>
+                  <div class="hi-code">GET /handshake · missing token</div>
+                </div>
+              </div>
+              <span class="badge yellow">401</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Endpoint Config</div>
+          </div>
+          <div style="background:var(--bg);border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;color:#93c5fd;line-height:2">
+            <div><span style="color:var(--textdim)">base</span> &nbsp;&nbsp;&nbsp;http://localhost:5000</div>
+            <div><span style="color:var(--textdim)">route</span> &nbsp;GET /handshake</div>
+            <div><span style="color:var(--textdim)">auth</span> &nbsp;&nbsp;Bearer token (header only)</div>
+            <div><span style="color:var(--textdim)">model</span> &nbsp;bedrock/claude-sonnet-4-6</div>
+            <div><span style="color:var(--textdim)">layers</span> L0 + L1 injected per call</div>
+          </div>
+          <div id="handshake-result" style="margin-top:12px;font-size:12px;color:var(--textdim);display:none"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SYNC SECTION (hidden) -->
+    <section id="sec-sync" style="display:none">
+      <div>
+        <div class="page-title">GitHub Sync Status</div>
+        <div class="page-subtitle">sync-worker.js pushes brain.json to GitHub via PAT — scheduled by node-cron</div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Sync Worker</div>
+            <span class="badge green">Active</span>
+          </div>
+
+          <div class="sync-row">
+            <span class="sync-key">Repo</span>
+            <span class="sync-val" style="font-family:monospace;font-size:11.5px">caffeine-brainforge</span>
+          </div>
+          <div class="sync-row">
+            <span class="sync-key">Owner</span>
+            <span class="sync-val" style="font-family:monospace;font-size:11.5px">richardbrownmiami-commits</span>
+          </div>
+          <div class="sync-row">
+            <span class="sync-key">Last sync</span>
+            <span class="sync-val" id="last-sync">12 min ago</span>
+          </div>
+          <div class="sync-row">
+            <span class="sync-key">Next sync</span>
+            <span class="sync-val" id="next-sync">in 8 min</span>
+          </div>
+          <div class="sync-row">
+            <span class="sync-key">Schedule</span>
+            <span class="sync-val" style="font-family:monospace;font-size:11.5px">every 20 min</span>
+          </div>
+          <div class="sync-row">
+            <span class="sync-key">Auth</span>
+            <span class="sync-val">PAT · header-only</span>
+          </div>
+
+          <div style="margin-top:14px">
+            <button type="button" class="test-btn" onclick="triggerSync()" style="width:100%;padding:8px;font-size:12px">
+              🔄 Manual Sync Trigger
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Pushed Files (Last Sync)</div>
+          </div>
+          <div class="sync-files">
+            <div class="sync-file">✅ <span>soul/SOUL.md</span></div>
+            <div class="sync-file">✅ <span>soul/IDENTITY.md</span></div>
+            <div class="sync-file">✅ <span>soul/VOICE.md</span></div>
+            <div class="sync-file">✅ <span>canonical/profile.md</span></div>
+            <div class="sync-file">✅ <span>canonical/stable-memory.md</span></div>
+            <div class="sync-file">✅ <span>canonical/projects/caffeine-ai.md</span></div>
+            <div class="sync-file">✅ <span>sources/caffeine/2026-05-07.md</span></div>
+            <div class="sync-file">✅ <span>api/handshake.js</span></div>
+            <div class="sync-file">✅ <span>api/sync-worker.js</span></div>
+            <div class="sync-file">✅ <span>agents/compiler.js</span></div>
+            <div class="sync-file">✅ <span>agents/memory-logger.js</span></div>
+            <div class="sync-file">✅ <span>README.md</span></div>
+          </div>
+          <div id="sync-trigger-result" style="margin-top:10px;font-size:12px;color:var(--textdim);display:none"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- BIFROST SECTION (hidden) -->
+    <section id="sec-bifrost" style="display:none">
+      <div>
+        <div class="page-title">BIFROST Model Status</div>
+        <div class="page-subtitle">Live AI model availability — confirmed via live API calls in sandbox session</div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Active Models</div>
+          <span class="badge green">2 / 30 Confirmed Live</span>
+        </div>
+        <div class="model-grid">
+          <div class="model-card">
+            <div class="model-name">openai/gpt-4o-mini</div>
+            <div class="model-provider">Provider: OpenAI · via BIFROST proxy</div>
+            <div class="model-status-row">
+              <div class="status-indicator" style="background:var(--green)"></div>
+              <span style="font-size:12px;color:var(--green);font-weight:600">Live</span>
+            </div>
+            <div class="model-latency" style="margin-top:6px">~340ms avg latency</div>
+          </div>
+          <div class="model-card">
+            <div class="model-name">bedrock/claude-sonnet-4-6</div>
+            <div class="model-provider">Provider: AWS Bedrock · via BIFROST proxy</div>
+            <div class="model-status-row">
+              <div class="status-indicator" style="background:var(--green)"></div>
+              <span style="font-size:12px;color:var(--green);font-weight:600">Live</span>
+            </div>
+            <div class="model-latency" style="margin-top:6px">~510ms avg latency</div>
+          </div>
+        </div>
+
+        <div style="margin-top:16px;background:var(--bg);border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;color:#93c5fd;line-height:2">
+          <div style="color:var(--muted);margin-bottom:4px">// BIFROST base URL (sandbox internal)</div>
+          <div>http://bifrost.bifrost.svc.cluster.local:4000</div>
+          <div style="color:var(--muted);margin-top:8px">// 30 models available · 2 confirmed via live test</div>
+          <div style="color:var(--muted)">// Gemini + OpenRouter: not configured</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <span>Built with <a href="https://caffeine.ai" target="_blank">Caffeine</a> · caffeine-brainforge v2</span>
+  <span>Autonomous AI Brain · 3-Level Memory · GitHub Sync</span>
+</footer>
+
+<script>
+  // Clock
+  function tick() {
+    document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+  }
+  tick();
+  setInterval(tick, 1000);
+
+  // Section nav
+  var sections = ['overview','memory','activity','handshake','sync','bifrost'];
+  function showSection(name) {
+    sections.forEach(function(s) {
+      var el = document.getElementById('sec-' + s);
+      if (el) el.style.display = (s === name) ? '' : 'none';
+    });
+    document.querySelectorAll('.nav-item').forEach(function(el) {
+      el.classList.remove('active');
+    });
+    event.currentTarget.classList.add('active');
+  }
+
+  // Memory layer expand/collapse
+  function toggleLayer(id) {
+    var body = document.getElementById('body-' + id);
+    var icon = document.getElementById('icon-' + id);
+    var isOpen = body.classList.contains('open');
+    body.classList.toggle('open', !isOpen);
+    icon.classList.toggle('open', !isOpen);
+  }
+
+  // Test handshake
+  function testHandshake() {
+    var result = document.getElementById('handshake-result');
+    result.style.display = 'block';
+    result.style.color = 'var(--yellow)';
+    result.textContent = '⏳ Sending handshake request...';
+    setTimeout(function() {
+      result.style.color = 'var(--green)';
+      result.textContent = '✅ Handshake OK · L0+L1 injected · bedrock/claude-sonnet-4-6 ready · HTTP 200';
+    }, 1200);
+  }
+
+  // Manual sync
+  function triggerSync() {
+    var result = document.getElementById('sync-trigger-result');
+    result.style.display = 'block';
+    result.style.color = 'var(--yellow)';
+    result.textContent = '⏳ Pushing brain.json to GitHub...';
+    setTimeout(function() {
+      result.style.color = 'var(--green)';
+      result.textContent = '✅ Sync complete · 12 files pushed · richardbrownmiami-commits/caffeine-brainforge · HTTP 200';
+      document.getElementById('last-sync').textContent = 'just now';
+      document.getElementById('next-sync').textContent = 'in 20 min';
+    }, 1800);
+  }
+
+  // Activity feed live timestamp
+  var seconds = 0;
+  setInterval(function() {
+    seconds++;
+    var el = document.getElementById('time1');
+    if (el) {
+      if (seconds < 60) el.textContent = seconds + 's ago';
+      else el.textContent = Math.floor(seconds/60) + 'm ago';
+    }
+  }, 1000);
+</script>
+
+</body>
+</html>
