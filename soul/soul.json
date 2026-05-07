@@ -1,0 +1,15 @@
+{
+  "version": "2.0",
+  "protocol": "3-level-loading",
+  "l0": ["soul/SOUL.md", "soul/IDENTITY.md", "soul/VOICE.md"],
+  "l1": ["canonical/profile.md", "canonical/stable-memory.md"],
+  "l2_on_demand": ["canonical/projects/caffeine-ai.md"],
+  "sources_dir": "sources/",
+  "compiler": "agents/compiler.js",
+  "api_port": 5000,
+  "bifrost_base": "http://bifrost.bifrost.svc.cluster.local:4000",
+  "models": {
+    "primary": "bedrock/claude-sonnet-4-6",
+    "secondary": "openai/gpt-4o-mini"
+  }
+}
