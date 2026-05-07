@@ -1493,6 +1493,16 @@ export default {
         }
       }
 
+      // Version check endpoint
+      if (path === '/api/version' && method === 'GET') {
+        return json({
+          version: '1.0.0',
+          buildDate: '2026-05-07',
+          apkUrl: 'https://github.com/richardbrownmiami-commits/caffeine-brainforge/releases/latest/download/BrainForge.apk',
+          changelog: 'Bug fixes, performance improvements, new Code Writer and Logs features added'
+        });
+      }
+
       return json({ error: 'Not found' }, 404);
     } catch (err) {
       console.error(err);
