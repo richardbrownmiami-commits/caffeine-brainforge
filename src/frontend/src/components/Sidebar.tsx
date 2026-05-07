@@ -11,6 +11,7 @@ import {
   Moon,
   Settings,
   Sun,
+  Terminal,
   Zap,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -38,6 +39,8 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
   const isBrowser = !!matchRoute({ to: "/browser" });
   const isApiTools = !!matchRoute({ to: "/api-tools" });
   const isMaster = !!matchRoute({ to: "/master" });
+  const isLogs = !!matchRoute({ to: "/logs" });
+  const isCodeWriter = !!matchRoute({ to: "/code-writer" });
 
   const [dark, setDark] = useState(
     () => localStorage.getItem("bf_theme") !== "light",
@@ -158,7 +161,35 @@ function SidebarInner({ onClose }: { onClose?: () => void }) {
           <Zap className="w-4 h-4" />
           API Tools
         </Link>
-        <button
+        <Link
+          to="/logs"
+          data-ocid="nav.logs.link"
+          onClick={onClose}
+          className={cn(
+            "nav-item flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-all",
+            isLogs
+              ? "nav-item-active text-foreground font-medium"
+              : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground",
+          )}
+        >
+          <Terminal className="w-4 h-4" />
+          Logs
+        </Link>
+        <Link
+          to="/code-writer"
+          data-ocid="nav.codewriter.link"
+          onClick={onClose}
+          className={cn(
+            "nav-item flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-all",
+            isCodeWriter
+              ? "nav-item-active text-foreground font-medium"
+              : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground",
+          )}
+        >
+          <Zap className="w-4 h-4" />
+          Code Writer
+        </Link>
+                <button
           type="button"
           onClick={() => setFeedbackOpen(true)}
           className="nav-item flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-all text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground w-full text-left"
