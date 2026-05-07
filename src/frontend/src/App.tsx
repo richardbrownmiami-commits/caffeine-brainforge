@@ -20,6 +20,8 @@ const AgentPage = lazy(() => import("./pages/AgentPage"));
 const BrowserPage = lazy(() => import("./pages/BrowserPage"));
 const ApiToolsPage = lazy(() => import("./pages/ApiToolsPage"));
 const MasterAgentPage = lazy(() => import("./pages/MasterAgentPage"));
+const LogPage = lazy(() => import("./pages/LogPage"));
+const CodeWriterPage = lazy(() => import("./pages/CodeWriterPage"));
 
 // ---- PIN Lock Component ----
 function PinLock({ children }: { children: React.ReactNode }) {
@@ -184,6 +186,18 @@ const masterAgentRoute = createRoute({
   component: MasterAgentPage,
 });
 
+const logsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/logs",
+  component: LogPage,
+});
+
+const codeWriterRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/code-writer",
+  component: CodeWriterPage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   projectsRoute,
@@ -194,6 +208,8 @@ const routeTree = rootRoute.addChildren([
   browserRoute,
   apiToolsRoute,
   masterAgentRoute,
+  logsRoute,
+  codeWriterRoute,
 ]);
 const router = createRouter({ routeTree });
 
