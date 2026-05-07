@@ -1,0 +1,21 @@
+{
+  "name": "brainforge",
+  "version": "0.1.0",
+  "description": "BrainForge AI App Builder — CLI and API client",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "brainforge": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": ["brainforge", "ai", "app-builder", "cli"],
+  "author": "BrainForge",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "files": ["dist", "README.md"]
+}
