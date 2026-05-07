@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { lazy } from "react";
 import { OnboardingWizard, useOnboarding } from "./components/OnboardingWizard";
 import { Sidebar } from "./components/Sidebar";
+import UpdateChecker from "./components/UpdateChecker";
 import { EditorPage } from "./pages/EditorPage";
 import { PolicyPage } from "./pages/PolicyPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
@@ -224,9 +225,11 @@ export default function App() {
   return (
     <>
       <RouterProvider router={router} />
+      <UpdateChecker />
       {showWizard && (
         <OnboardingWizard onComplete={() => setShowWizard(false)} />
       )}
     </>
   );
 }
+
