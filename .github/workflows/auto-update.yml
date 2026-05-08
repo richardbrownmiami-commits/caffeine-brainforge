@@ -1,0 +1,36 @@
+name: Auto Update Brain
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Every day at midnight UTC
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install axios cheerio rss-parser node-fetch
+
+      - name: Run auto-update brain
+        run: node agents/auto-update-brain.js
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: richardbrownmiami-commits/caffeine-brainforge
+
+      - name: Commit and push updates
+        run: |
+          git config user.name "caffeine-brain-bot"
+          git config user.email "bot@caffeine-brain.dev"
+          git add -A
+          git diff --staged --quiet || git commit -m "chore: auto-update brain [$(date -u +%Y-%m-%d)]"
+          git push
+
