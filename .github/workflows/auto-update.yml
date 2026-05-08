@@ -15,5 +15,5 @@ jobs:
       - name: Run auto-update
         run: node agents/auto-update-brain.js
         env:
-          GITHUB_TOKEN: \$\{{ secrets.GITHUB_TOKEN }}\
-          GROQ_API_KEY: \${{ secrets.GROQ_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
