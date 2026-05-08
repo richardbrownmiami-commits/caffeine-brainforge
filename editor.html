@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Brain Prompt Editor — AI Family</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --border:    #30363d;
+      --accent:    #238636;
+      --accent-h:  #2ea043;
+      --danger:    #da3633;
+      --warn:      #d29922;
+      --text:      #e6edf3;
+      --muted:     #8b949e;
+      --sidebar-w: 260px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── TOP BAR ── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+    header h1 { font-size: 15px; font-weight: 600; flex: 1; white-space: nowrap; }
+    header h1 span { color: var(--muted); font-weight: 400; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--surface); color: var(--text);
+      font-size: 13px; cursor: pointer; transition: background .15s, border-color .15s;
+      white-space: nowrap;
+    }
+    .btn:hover { background: #21262d; border-color: #8b949e; }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn.primary:hover { background: var(--accent-h); }
+    .btn.danger  { background: var(--danger); border-color: var(--danger); color: #fff; }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+    #settings-toggle { margin-left: auto; }
+
+    /* ── SETTINGS PANEL ── */
+    #settings-panel {
+      display: none;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 16px;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    #settings-panel.open { display: flex; }
+    #settings-panel label { font-size: 12px; color: var(--muted); }
+    #pat-input {
+      flex: 1; min-width: 200px; max-width: 420px;
+      background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); border-radius: 6px; padding: 5px 10px; font-size: 13px;
+    }
+    #pat-input:focus { outline: none; border-color: #58a6ff; }
+
+    /* ── TOAST ── */
+    #toast {
+      position: fixed; bottom: 20px; right: 20px; z-index: 999;
+      padding: 10px 16px; border-radius: 8px; font-size: 13px;
+      background: #161b22; border: 1px solid var(--border);
+      max-width: 360px; word-break: break-word;
+      opacity: 0; transform: translateY(10px);
+      transition: opacity .2s, transform .2s;
+      pointer-events: none;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+    #toast.ok   { border-color: var(--accent); }
+    #toast.err  { border-color: var(--danger); }
+    #toast.warn { border-color: var(--warn); }
+
+    /* ── MAIN LAYOUT ── */
+    .workspace {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── SIDEBAR ── */
+    #sidebar {
+      width: var(--sidebar-w);
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    #sidebar-header {
+      padding: 10px 12px 8px;
+      font-size: 11px; font-weight: 600; letter-spacing: .5px;
+      text-transform: uppercase; color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    #file-list {
+      flex: 1; overflow-y: auto; padding: 6px 0;
+    }
+    .file-item {
+      display: flex; align-items: center;
+      padding: 7px 12px; cursor: pointer; gap: 8px;
+      border-left: 3px solid transparent;
+      transition: background .1s;
+    }
+    .file-item:hover { background: #21262d; }
+    .file-item.active { background: #21262d; border-left-color: #58a6ff; }
+    .file-item .fname { flex: 1; font-size: 13px; word-break: break-all; }
+    .file-item .ts { font-size: 10px; color: var(--muted); white-space: nowrap; }
+    .file-item .status-dot {
+      width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+      background: var(--muted);
+    }
+    .file-item .status-dot.ok   { background: var(--accent-h); }
+    .file-item .status-dot.err  { background: var(--danger); }
+    .file-item .status-dot.load { background: var(--warn); }
+
+    /* ── EDITOR AREA ── */
+    #editor-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #editor-toolbar {
+      display: flex; align-items: center; gap: 8px; padding: 8px 14px;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      flex-wrap: wrap; flex-shrink: 0;
+    }
+    #editor-toolbar .filepath {
+      font-size: 12px; color: #58a6ff; font-family: monospace; flex: 1;
+    }
+
+    #split-editor {
+      flex: 1;
+      display: flex;
+      gap: 0;
+      overflow: hidden;
+    }
+
+    .editor-pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-right: 1px solid var(--border);
+    }
+    .editor-pane:last-child { border-right: none; }
+    .pane-header {
+      padding: 6px 12px;
+      font-size: 12px; font-weight: 600;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .pane-header.verified { color: #3fb950; }
+    .pane-header.unverified { color: var(--warn); }
+
+    textarea {
+      flex: 1;
+      background: var(--bg);
+      color: var(--text);
+      border: none;
+      padding: 14px;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      resize: none;
+      outline: none;
+      width: 100%;
+    }
+    textarea::selection { background: #264f78; }
+
+    #placeholder {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 12px;
+      color: var(--muted); text-align: center; padding: 24px;
+    }
+    #placeholder .icon { font-size: 48px; }
+
+    /* ── NEW FILE MODAL ── */
+    #modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.6); z-index: 200;
+      align-items: center; justify-content: center;
+    }
+    #modal-overlay.open { display: flex; }
+    #modal {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 20px 24px; width: 360px; max-width: 95vw;
+    }
+    #modal h2 { font-size: 15px; margin-bottom: 14px; }
+    #modal input {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); border-radius: 6px; padding: 7px 10px;
+      font-size: 13px; margin-bottom: 14px;
+    }
+    #modal input:focus { outline: none; border-color: #58a6ff; }
+    #modal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+    /* ── MOBILE ── */
+    #sidebar-toggle { display: none; }
+    @media (max-width: 640px) {
+      #sidebar {
+        position: fixed; top: 0; left: 0; bottom: 0;
+        z-index: 100; transform: translateX(-100%);
+        transition: transform .25s; width: 80vw;
+      }
+      #sidebar.open { transform: translateX(0); box-shadow: 4px 0 20px rgba(0,0,0,.5); }
+      #sidebar-toggle { display: inline-flex; }
+      .editor-pane { min-width: 0; }
+      #split-editor { flex-direction: column; }
+      .editor-pane { border-right: none; border-bottom: 1px solid var(--border); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── HEADER ── -->
+<header>
+  <button class="btn" id="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">☰</button>
+  <h1>🧠 Brain Prompt Editor <span>— AI Family</span></h1>
+  <button class="btn" id="new-file-btn" onclick="openNewFileModal()">＋ New File</button>
+  <button class="btn" id="reload-btn" onclick="loadAllFiles()">↺ Reload</button>
+  <button class="btn primary" id="save-btn" onclick="saveFile()" disabled>💾 Save to GitHub</button>
+  <button class="btn" id="settings-toggle" onclick="toggleSettings()">⚙ Settings</button>
+</header>
+
+<!-- ── SETTINGS ── -->
+<div id="settings-panel">
+  <label for="pat-input">GitHub PAT (stored in localStorage):</label>
+  <input type="password" id="pat-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+         oninput="savePat(this.value)" autocomplete="off" />
+  <span id="pat-status" style="font-size:12px; color: var(--muted);"></span>
+</div>
+
+<!-- ── WORKSPACE ── -->
+<div class="workspace">
+
+  <!-- SIDEBAR -->
+  <nav id="sidebar" aria-label="File list">
+    <div id="sidebar-header">
+      <span>rules/*.md</span>
+      <span id="file-count" style="font-size:11px; color:var(--muted)"></span>
+    </div>
+    <div id="file-list"></div>
+  </nav>
+
+  <!-- EDITOR -->
+  <div id="editor-area">
+    <div id="editor-toolbar">
+      <span class="filepath" id="current-filepath">— no file selected —</span>
+      <span id="last-updated" style="font-size:11px; color:var(--muted);"></span>
+    </div>
+    <div id="split-editor">
+      <div id="placeholder">
+        <div class="icon">📄</div>
+        <div>Select a file from the sidebar to start editing</div>
+        <div style="font-size:12px; color:var(--muted)">Changes are pushed directly to GitHub</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── TOAST ── -->
+<div id="toast" role="alert"></div>
+
+<!-- ── NEW FILE MODAL ── -->
+<div id="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div id="modal">
+    <h2 id="modal-title">📝 Create New File</h2>
+    <label style="font-size:12px; color:var(--muted); display:block; margin-bottom:6px">
+      File name (saved under <code>rules/</code>):
+    </label>
+    <input type="text" id="new-filename" placeholder="my-new-rules.md"
+           onkeydown="if(event.key==='Enter') confirmNewFile()" />
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn primary" onclick="confirmNewFile()">Create</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ───────────────────────────────────────────
+   CONFIG
+─────────────────────────────────────────── */
+const REPO   = 'richardbrownmiami-commits/caffeine-brainforge';
+const BRANCH = 'main';
+const FILES  = [
+  'verified-limitations.md',
+  'verified-capabilities.md',
+  'qa.md',
+  'branding.md',
+  'platform-constraints.md',
+  'security.md',
+  'memories.md',
+];
+const RAW_BASE   = `https://raw.githubusercontent.com/${REPO}/${BRANCH}/rules/`;
+const API_BASE   = `https://api.github.com/repos/${REPO}/contents/rules/`;
+
+/* ───────────────────────────────────────────
+   STATE
+─────────────────────────────────────────── */
+let fileState = {};   // { filename: { content, sha, updatedAt, status } }
+let activeFile = null;
+let sidebarOpen = false;
+
+/* ───────────────────────────────────────────
+   PAT
+─────────────────────────────────────────── */
+function getPat() { return localStorage.getItem('brain_editor_pat') || ''; }
+function savePat(v) {
+  localStorage.setItem('brain_editor_pat', v.trim());
+  document.getElementById('pat-status').textContent = v.trim() ? '✓ saved' : '';
+}
+
+/* ───────────────────────────────────────────
+   INIT
+─────────────────────────────────────────── */
+window.addEventListener('DOMContentLoaded', () => {
+  const stored = getPat();
+  const input = document.getElementById('pat-input');
+  if (stored) { input.value = stored; document.getElementById('pat-status').textContent = '✓ saved'; }
+  loadAllFiles();
+});
+
+/* ───────────────────────────────────────────
+   LOAD ALL FILES
+─────────────────────────────────────────── */
+async function loadAllFiles() {
+  renderSidebar();
+  // First try GitHub API (gives sha + timestamps), fallback to raw
+  const allFiles = [...new Set([...FILES, ...Object.keys(fileState)])];
+  for (const f of allFiles) {
+    markStatus(f, 'load');
+    try {
+      const pat = getPat();
+      const headers = { Accept: 'application/vnd.github.v3+json' };
+      if (pat) headers['Authorization'] = `token ${pat}`;
+      const res = await fetch(`${API_BASE}${f}`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        const content = decodeURIComponent(escape(atob(data.content.replace(/\n/g,''))));
+        const updatedAt = data.commit?.committer?.date || null;
+        fileState[f] = { content, sha: data.sha, updatedAt, status: 'ok' };
+      } else if (res.status === 404) {
+        // File may not exist yet — create empty entry
+        fileState[f] = { content: '', sha: null, updatedAt: null, status: 'new' };
+      } else {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      markStatus(f, fileState[f].status);
+    } catch (e) {
+      // Fallback to raw
+      try {
+        const r = await fetch(`${RAW_BASE}${f}?_=${Date.now()}`);
+        if (r.ok) {
+          fileState[f] = { content: await r.text(), sha: null, updatedAt: null, status: 'ok' };
+        } else {
+          fileState[f] = { content: '', sha: null, updatedAt: null, status: 'new' };
+        }
+        markStatus(f, fileState[f].status);
+      } catch {
+        fileState[f] = { content: '', sha: null, updatedAt: null, status: 'err' };
+        markStatus(f, 'err');
+      }
+    }
+  }
+  renderSidebar();
+  document.getElementById('file-count').textContent = `${Object.keys(fileState).length} files`;
+  if (activeFile) openFile(activeFile);
+}
+
+/* ───────────────────────────────────────────
+   SIDEBAR
+─────────────────────────────────────────── */
+function renderSidebar() {
+  const list = document.getElementById('file-list');
+  list.innerHTML = '';
+  for (const f of Object.keys(fileState)) {
+    const st = fileState[f] || {};
+    const item = document.createElement('div');
+    item.className = 'file-item' + (f === activeFile ? ' active' : '');
+    item.onclick = () => openFile(f);
+    item.innerHTML = `
+      <span class="status-dot ${st.status||''}"></span>
+      <span class="fname">${f}</span>
+      <span class="ts">${st.updatedAt ? fmtDate(st.updatedAt) : (st.status==='new'?'new':'—')}</span>
+    `;
+    list.appendChild(item);
+  }
+}
+
+function markStatus(f, status) {
+  if (!fileState[f]) fileState[f] = {};
+  fileState[f].status = status;
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const now = new Date();
+  const diff = Math.floor((now - d) / 60000);
+  if (diff < 1)   return 'just now';
+  if (diff < 60)  return `${diff}m ago`;
+  if (diff < 1440) return `${Math.floor(diff/60)}h ago`;
+  return d.toLocaleDateString();
+}
+
+/* ───────────────────────────────────────────
+   OPEN FILE — show split editor
+─────────────────────────────────────────── */
+function openFile(filename) {
+  activeFile = filename;
+  renderSidebar();
+  closeSidebar();
+
+  const st = fileState[filename] || {};
+  document.getElementById('current-filepath').textContent = `rules/${filename}`;
+  document.getElementById('last-updated').textContent =
+    st.updatedAt ? `Last updated: ${new Date(st.updatedAt).toLocaleString()}` :
+    st.status === 'new' ? '(new — not yet on GitHub)' : '';
+  document.getElementById('save-btn').disabled = false;
+
+  const content = st.content || '';
+
+  // Split content into verified / unverified sections
+  const verifiedMatch   = content.match(/## VERIFIED FACTS\n([\s\S]*?)(?=\n## UNVERIFIED|$)/);
+  const unverifiedMatch = content.match(/## UNVERIFIED \/ NOTES\n([\s\S]*?)$/);
+  const hasMarkers = verifiedMatch || unverifiedMatch;
+
+  const verifiedText   = verifiedMatch   ? verifiedMatch[1].trimEnd()   : (hasMarkers ? '' : content);
+  const unverifiedText = unverifiedMatch ? unverifiedMatch[1].trimEnd() : '';
+
+  const split = document.getElementById('split-editor');
+  split.innerHTML = `
+    <div class="editor-pane">
+      <div class="pane-header verified">✅ Verified Facts</div>
+      <textarea id="ta-verified" placeholder="Confirmed, tested facts go here…" spellcheck="false">${escHtml(verifiedText)}</textarea>
+    </div>
+    <div class="editor-pane">
+      <div class="pane-header unverified">📝 Notes / Unverified</div>
+      <textarea id="ta-unverified" placeholder="Unconfirmed claims, hypotheses, TODOs…" spellcheck="false">${escHtml(unverifiedText)}</textarea>
+    </div>
+  `;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ───────────────────────────────────────────
+   SAVE TO GITHUB
+─────────────────────────────────────────── */
+async function saveFile() {
+  if (!activeFile) return;
+  const pat = getPat();
+  if (!pat) {
+    openSettings();
+    toast('⚠ Enter your GitHub PAT in Settings first', 'warn');
+    return;
+  }
+
+  const taV = document.getElementById('ta-verified');
+  const taU = document.getElementById('ta-unverified');
+  if (!taV) return;
+
+  const verifiedContent   = taV.value.trim();
+  const unverifiedContent = taU ? taU.value.trim() : '';
+
+  // Combine back into a single file with section markers
+  let combined = verifiedContent;
+  if (unverifiedContent) {
+    combined = `## VERIFIED FACTS\n${verifiedContent}\n\n## UNVERIFIED / NOTES\n${unverifiedContent}`;
+  }
+
+  const encoded = btoa(unescape(encodeURIComponent(combined)));
+  const st = fileState[activeFile] || {};
+
+  const body = {
+    message: `prompt-editor: update rules/${activeFile}`,
+    content: encoded,
+    branch: BRANCH,
+  };
+  if (st.sha) body.sha = st.sha;
+
+  const saveBtn = document.getElementById('save-btn');
+  saveBtn.disabled = true;
+  saveBtn.textContent = '⏳ Saving…';
+
+  try {
+    const res = await fetch(`${API_BASE}${activeFile}`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `token ${pat}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/vnd.github.v3+json',
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      fileState[activeFile].content = combined;
+      fileState[activeFile].sha     = data.content.sha;
+      fileState[activeFile].status  = 'ok';
+      fileState[activeFile].updatedAt = new Date().toISOString();
+      renderSidebar();
+      document.getElementById('last-updated').textContent =
+        `Last updated: ${new Date().toLocaleString()}`;
+      toast(`✅ Saved — HTTP ${res.status}`, 'ok');
+    } else {
+      toast(`❌ Save failed — HTTP ${res.status}: ${data.message || JSON.stringify(data)}`, 'err');
+    }
+  } catch (e) {
+    toast(`❌ Network error: ${e.message}`, 'err');
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = '💾 Save to GitHub';
+  }
+}
+
+/* ───────────────────────────────────────────
+   NEW FILE MODAL
+─────────────────────────────────────────── */
+function openNewFileModal() {
+  document.getElementById('modal-overlay').classList.add('open');
+  document.getElementById('new-filename').value = '';
+  setTimeout(() => document.getElementById('new-filename').focus(), 50);
+}
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+}
+function confirmNewFile() {
+  let name = document.getElementById('new-filename').value.trim();
+  if (!name) return;
+  if (!name.endsWith('.md')) name += '.md';
+  closeModal();
+  fileState[name] = { content: '', sha: null, updatedAt: null, status: 'new' };
+  renderSidebar();
+  openFile(name);
+  document.getElementById('file-count').textContent = `${Object.keys(fileState).length} files`;
+}
+
+/* ───────────────────────────────────────────
+   UI HELPERS
+─────────────────────────────────────────── */
+function toggleSettings() {
+  document.getElementById('settings-panel').classList.toggle('open');
+  if (document.getElementById('settings-panel').classList.contains('open')) {
+    document.getElementById('pat-input').focus();
+  }
+}
+function openSettings() {
+  document.getElementById('settings-panel').classList.add('open');
+}
+function toggleSidebar() {
+  sidebarOpen = !sidebarOpen;
+  document.getElementById('sidebar').classList.toggle('open', sidebarOpen);
+}
+function closeSidebar() {
+  sidebarOpen = false;
+  document.getElementById('sidebar').classList.remove('open');
+}
+
+let toastTimer;
+function toast(msg, type = 'ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `show ${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ''; }, 4000);
+}
+
+// Close modal on overlay click
+document.getElementById('modal-overlay').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('modal-overlay')) closeModal();
+});
+
+// Close sidebar on outside click (mobile)
+document.addEventListener('click', (e) => {
+  if (sidebarOpen && !document.getElementById('sidebar').contains(e.target)
+      && e.target.id !== 'sidebar-toggle') {
+    closeSidebar();
+  }
+});
+</script>
+</body>
+</html>
