@@ -680,25 +680,24 @@ function renderAgents(){
 
 function toggleChat(){document.getElementById('chat-panel').classList.toggle('open');if(document.getElementById('chat-panel').classList.contains('open'))document.getElementById('chat-input').focus();}
 function chatKeydown(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}}
+async function sendToWorker(message){
+  try{
+    const resp=await fetch('https://caffeine-brain-worker.richard-brown-miami.workers.dev/chat',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({message:message,context:window.brainContext||''})
+    });
+    const data=await resp.json();
+    return data.reply||data.error||'No response';
+  }catch(e){return 'Connection error: '+e.message;}
+}
 async function sendChat(){
   const inp=document.getElementById('chat-input'),msg=inp.value.trim();if(!msg)return;inp.value='';
   appendMsg('user','👤',msg);chatHistory.push({role:'user',content:msg});
   const typing=showTyping();
-  await new Promise(r=>setTimeout(r,Math.random()*900+500));
+  const reply=await sendToWorker(msg);
   typing.remove();
-  const reply=brainReply(msg);
   appendMsg('ai','🧠',reply);chatHistory.push({role:'assistant',content:reply});
-}
-function brainReply(msg){
-  const ml=msg.toLowerCase();
-  if(ml.includes('bifrost')||ml.includes('api'))return 'BIFROST: bifrost.bifrost.svc.cluster.local:4000. /v1 endpoint zaruri hai. Live: openai/gpt-4o-mini + bedrock/claude-sonnet-4-6. 30+ models available.';
-  if(ml.includes('memory')||ml.includes('soul')||ml.includes('brain'))return '3-level memory: L0 SOUL hamesha loaded (~800 tok), L1 Canonical session start par, L2 Project on-demand. '+( brainData.soul?'Live soul data loaded.':'Soul fetch ho raha hai.');
-  if(ml.includes('tool')||ml.includes('npm')||ml.includes('pnpm'))return 'Installed: openai-fetch@3.4.2 (BIFROST client), node-cron (scheduler), p-queue (queue). pnpm add use karo — npm install fail karta hai is workspace mein.';
-  if(ml.includes('agent')||ml.includes('qa')||ml.includes('spawn'))return 'Agents: QA (sabse powerful — bash + app/** write), composer (build), backend (limited), masterchat (lobby only), platform (rename/redeploy only). QA ke zariye bash commands chalte hain.';
-  if(ml.includes('github')||ml.includes('sync')||ml.includes('pat'))return 'GitHub sync PAT se — sirf Authorization header mein rakho, file content mein nahi. gh-pages branch ka SHA zaruri hai update ke liye. 13 files successfully pushed.';
-  if(ml.includes('hello')||ml.includes('salam')||ml.includes('hi'))return 'Salam developer! '+(brainData.soul?'Soul file loaded ✅. ':'')+'Main caffeine-brainforge ka brain hoon. Kya poochhhna hai?';
-  if(brainData.soul){const lines=brainData.soul.split('\n').filter(l=>l.trim().length>30);const r=lines[Math.floor(Math.random()*Math.min(lines.length,8))];if(r)return 'Brain se: "'+r.replace(/^#+ */,'').trim().slice(0,180)+'"';}
-  return 'Aap ka sawaal note ho gaya. Kya aur detail chahiye? BIFROST, agents, memory, ya GitHub sync ke baare mein pooch sakte hain.';
 }
 function appendMsg(role,av,text){const msgs=document.getElementById('cp-messages');const d=document.createElement('div');d.className='msg'+(role==='user'?' user':'');d.innerHTML=`<div class="msg-avatar">${av}</div><div class="msg-bubble">${esc(text)}</div>`;msgs.appendChild(d);msgs.scrollTop=msgs.scrollHeight;}
 function showTyping(){const msgs=document.getElementById('cp-messages');const d=document.createElement('div');d.className='msg';d.innerHTML='<div class="msg-avatar">🧠</div><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';msgs.appendChild(d);msgs.scrollTop=msgs.scrollHeight;return d;}
@@ -735,6 +734,7 @@ async function loadAllData(){
     const memTxt=memory.status==='fulfilled'?memory.value:'';
     const srcTxt=sources.status==='fulfilled'?sources.value:'';
     brainData={soul:soulTxt,memory:memTxt,sources:srcTxt};
+    window.brainContext=(soulTxt+' '+memTxt).slice(0,1500);
     if(soulTxt){
       document.getElementById('l0-content').innerHTML=`<div style="font-size:12px;color:var(--text2);line-height:1.6;white-space:pre-wrap;max-height:150px;overflow-y:auto">${esc(soulTxt.slice(0,500))}${soulTxt.length>500?'\n[+'+(soulTxt.length-500)+' chars]':''}</div>`;
       document.getElementById('l0-layer-content').textContent=soulTxt;
