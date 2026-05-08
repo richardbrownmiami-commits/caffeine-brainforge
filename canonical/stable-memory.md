@@ -32,3 +32,20 @@
 - Both Caffeine AI and brainforge inject same soul files
 - sync-worker.js pushes updates via GitHub API (PAT in env var)
 - Session start protocol: always read L0 + L1 first
+
+## Auto-Update — 2026-05-08
+_Last auto-update run: 2026-05-08T18:46:14.597Z_
+
+### Node.js Latest
+- LTS: v24.15.0, Current: v26.1.0
+
+### Key Package Versions (npm latest)
+- axios: 1.16.0
+- cheerio: 1.2.0
+- rss-parser: 3.13.0
+- @dfinity/agent: 3.4.3
+- wrangler: 4.90.0
+
+### Latest ICP Release
+- release-2026-05-07_04-27-base (2026-05-07)
+- https://github.com/dfinity/ic/releases/tag/release-2026-05-07_04-27-base
