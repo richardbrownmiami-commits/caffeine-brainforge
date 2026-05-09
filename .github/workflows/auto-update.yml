@@ -1,15 +1,17 @@
-name: Brain Auto-Update
+name: Auto Update Brain
+
 on:
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 0 * * *'   # daily midnight — brain update
+    - cron: '0 2 * * 0'   # Sunday 2am — memory decay
   workflow_dispatch:
 
 jobs:
-  update-brain:
+  update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
         with:
           node-version: '20'
       - name: Install dependencies
@@ -18,5 +20,18 @@ jobs:
         run: node agents/auto-update-brain.js
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
 
+  decay:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 2 * * 0'
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: cd agents && npm install @octokit/rest
+      - name: Run memory decay
+        run: node agents/memory-decay.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
