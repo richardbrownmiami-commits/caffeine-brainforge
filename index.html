@@ -290,8 +290,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <div id="metrics">
         <div class="metric"><div class="metric-val" id="m-tokens">--</div><div class="metric-lbl">Memory Tokens</div><div class="metric-sub">L0+L1 loaded</div></div>
         <div class="metric"><div class="metric-val" id="m-disc" style="color:var(--purple)">--</div><div class="metric-lbl">Discoveries</div><div class="metric-sub">this session</div></div>
-        <div class="metric"><div class="metric-val" id="m-hshk" style="color:var(--green)">7</div><div class="metric-lbl">Handshakes</div><div class="metric-sub">API calls</div></div>
-        <div class="metric"><div class="metric-val" id="m-syncs" style="color:var(--orange)">13</div><div class="metric-lbl">Brain Syncs</div><div class="metric-sub">GitHub pushes</div></div>
+        <div class="metric"><div class="metric-val" id="m-hshk" style="color:var(--green)">—</div><div class="metric-lbl">Handshakes</div><div class="metric-sub">API calls</div></div>
+        <div class="metric"><div class="metric-val" id="m-syncs" style="color:var(--orange)">...</div><div class="metric-lbl">Brain Syncs</div><div class="metric-sub">GitHub pushes</div></div>
       </div>
       <div class="two-col">
         <div class="card">
@@ -665,17 +665,31 @@ function renderDebate(){
   document.getElementById('debate-turns').innerHTML=debateData.map((d,i)=>`<div class="debate-turn" style="animation-delay:${i*.1}s"><div class="debate-avatar ${d.type}">${d.label}</div><div class="debate-bubble"><div class="debate-speaker ${d.type}">${esc(d.speaker)} · ${esc(d.round)}</div><div class="debate-text">${esc(d.text)}</div></div></div>`).join('');
 }
 
-const agentEvents=[
-  {icon:'🧠',name:'memory-logger',desc:'Discovery logged → discovery-log.txt',time:'2 min ago',color:'var(--purple)'},
-  {icon:'🔄',name:'sync-worker',desc:'brain.json pushed to GitHub (13 files)',time:'10 min ago',color:'var(--green)'},
-  {icon:'⚔️',name:'ai-debate.js',desc:'GPT-4o-mini vs Claude — 4 rounds complete',time:'15 min ago',color:'var(--orange)'},
-  {icon:'🤝',name:'handshake.js',desc:'/handshake endpoint registered — token verified',time:'18 min ago',color:'var(--accent)'},
-  {icon:'⚡',name:'master-agent.js',desc:'4 rounds orchestrated — BIFROST 30 models confirmed',time:'25 min ago',color:'var(--yellow)'},
-  {icon:'📦',name:'pnpm install',desc:'openai-fetch@3.4.2, node-cron, p-queue installed',time:'30 min ago',color:'var(--green)'},
-  {icon:'🔍',name:'QA research',desc:'506 lines — @mastra/core, elizaOS, bare-agent analyzed',time:'45 min ago',color:'var(--text2)'},
-];
-function renderAgents(){
-  document.getElementById('agent-activity').innerHTML=agentEvents.map((e,i)=>`<div class="activity-item">${i<agentEvents.length-1?'<div class="act-line"></div>':''}<div class="act-dot" style="background:rgba(0,0,0,0.3);border-color:${e.color}">${e.icon}</div><div class="act-body"><div class="act-name" style="color:${e.color}">${esc(e.name)}</div><div class="act-desc">${esc(e.desc)}</div><div class="act-time">${e.time}</div></div></div>`).join('');
+async function renderAgents(){
+  const container=document.getElementById('agent-activity');
+  // Show loading state first
+  container.innerHTML='<div style="color:var(--text3);font-size:12px;padding:8px 0">Loading real commits...</div>';
+  try{
+    const commits=await fetchAPI('/commits?per_page=7');
+    if(commits&&commits.length){
+      const colors=['var(--green)','var(--accent)','var(--purple)','var(--orange)','var(--yellow)','var(--pink)','var(--text2)'];
+      const icons=['🐙','📝','🔧','🚀','🔍','⚡','🧠'];
+      container.innerHTML=`<div style="font-size:11px;color:var(--text3);margin-bottom:10px;padding:4px 8px;background:var(--bg3);border-radius:4px;border-left:3px solid var(--accent)">📡 Live GitHub commits — real activity feed</div>`
+        +commits.map((c,i)=>{
+          const msg=c.commit?.message||'commit';
+          const author=c.commit?.author?.name||'unknown';
+          const date=timeAgo(c.commit?.author?.date);
+          const sha=c.sha?.slice(0,7)||'';
+          const color=colors[i%colors.length];
+          const icon=icons[i%icons.length];
+          return `<div class="activity-item">${i<commits.length-1?'<div class="act-line"></div>':''}<div class="act-dot" style="background:rgba(0,0,0,0.3);border-color:${color}">${icon}</div><div class="act-body"><div class="act-name" style="color:${color};font-family:monospace">${esc(sha)} — ${esc(author)}</div><div class="act-desc">${esc(msg.slice(0,80))}</div><div class="act-time">${date}</div></div></div>`;
+        }).join('');
+    }else{
+      container.innerHTML='<div style="color:var(--text3);font-size:12px;padding:8px 0">No commit data available — check GitHub API</div>';
+    }
+  }catch(e){
+    container.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px 0">Failed to load activity: '+esc(e.message)+'</div>';
+  }
 }
 
 function toggleChat(){document.getElementById('chat-panel').classList.toggle('open');if(document.getElementById('chat-panel').classList.contains('open'))document.getElementById('chat-input').focus();}
@@ -778,7 +792,7 @@ function startAutoRefresh(){stopAutoRefresh();if(autoRefreshEnabled&&autoRefresh
 function stopAutoRefresh(){if(autoRefreshTimer){clearInterval(autoRefreshTimer);autoRefreshTimer=null;}}
 
 document.addEventListener('DOMContentLoaded',()=>{
-  renderDebate();renderAgents();staticFallback();
+  renderDebate();renderAgents();staticFallback();  // renderAgents() is async - fetches real GitHub commits
   loadAllData();startAutoRefresh();
   addNotif('🚀','Dashboard Ready','Live data loading from GitHub','just now');
   addNotif('🧠','Brain Architecture','3-level L0+L1+L2 memory active','just now');
