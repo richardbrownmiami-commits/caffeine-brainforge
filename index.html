@@ -830,5 +830,71 @@ document.addEventListener('DOMContentLoaded',()=>{
   addNotif('🧠','Brain Architecture','3-level L0+L1+L2 memory active','just now');
 });
 </script>
+
+    <!-- Evolution Progress Panel -->
+    <div class="panel" id="evolution-panel" style="min-width:280px;">
+      <h2 style="color:#0ff;margin-bottom:10px;">&#x1F9E0; Evolution Progress</h2>
+      <div id="evolution-cycle" style="font-size:1.8em;font-weight:bold;color:#0ff;margin-bottom:5px;">Cycle: <span id="evo-count">...</span></div>
+      <div style="font-size:0.8em;color:#888;margin-bottom:12px;">AI self-improvement cycles completed</div>
+      <div id="evolution-dims" style="font-size:0.85em;line-height:1.8;">
+        <div><span style="color:#0ff;">&#x2460; Auto Improvement</span> <span style="float:right;color:#0f0;font-weight:bold;">Active</span></div>
+        <div><span style="color:#0ff;">&#x2461; Skill Acquisition</span> <span style="float:right;color:#0f0;font-weight:bold;">Active</span></div>
+        <div><span style="color:#0ff;">&#x2462; Identity Development</span> <span style="float:right;color:#0f0;font-weight:bold;">Active</span></div>
+        <div><span style="color:#0ff;">&#x2463; Thinking Improvement</span> <span style="float:right;color:#0f0;font-weight:bold;">Active</span></div>
+        <div><span style="color:#0ff;">&#x2464; Feature Addition</span> <span style="float:right;color:#0f0;font-weight:bold;">Active</span></div>
+        <div><span style="color:#0ff;">&#x2465; Tool Integration</span> <span style="float:right;color:#0f0;font-weight:bold;">Active</span></div>
+      </div>
+      <div id="evolution-last" style="margin:12px 0;font-size:0.75em;color:#888;border-top:1px solid #333;padding-top:8px;">Loading recent cycles...</div>
+      <button onclick="triggerEvolution()" id="evo-btn" style="margin-top:8px;padding:7px 16px;background:#0ff;color:#000;border:none;cursor:pointer;border-radius:4px;font-weight:bold;font-size:0.9em;">&#x25B6; Trigger Evolution</button>
+      <div id="evo-status" style="font-size:0.75em;color:#0f0;margin-top:5px;"></div>
+    </div>
+
+
+<script>
+async function loadEvolution() {
+  try {
+    const r = await fetch('https://caffeine-brain-worker.richard-brown-miami.workers.dev/events?type=evolution&limit=10&v=' + Date.now());
+    const raw = await r.json();
+    const events = Array.isArray(raw) ? raw : (raw.events || raw.data || []);
+    document.getElementById('evo-count').textContent = events.length;
+    if (events.length > 0) {
+      const last3 = events.slice(-3).reverse();
+      document.getElementById('evolution-last').innerHTML = '<strong style="color:#0ff">Recent cycles:</strong><br>' +
+        last3.map(function(e) {
+          var d = {};
+          try { d = typeof e.data === 'string' ? JSON.parse(e.data) : (e.data || {}); } catch(ex) {}
+          return '<span style="color:#0ff">Cycle ' + (d.cycle||'?') + '</span> <span style="color:#666">' + (e.timestamp||'').substring(0,10) + '</span><br>';
+        }).join('');
+    } else {
+      document.getElementById('evolution-last').innerHTML = 'No cycles yet. Click Trigger Evolution to start.';
+    }
+  } catch(e) {
+    document.getElementById('evo-count').textContent = '0';
+    document.getElementById('evolution-last').textContent = 'Error loading: ' + e.message;
+  }
+}
+async function triggerEvolution() {
+  var btn = document.getElementById('evo-btn');
+  var status = document.getElementById('evo-status');
+  btn.textContent = '⟳ Evolving...';
+  btn.disabled = true;
+  status.textContent = '';
+  try {
+    var r = await fetch('https://caffeine-brain-worker.richard-brown-miami.workers.dev/evolve', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({triggered_by: 'dashboard'})});
+    var data = await r.json();
+    status.textContent = 'Cycle ' + (data.cycle||'?') + ' complete!';
+    status.style.color = '#0f0';
+    setTimeout(loadEvolution, 2000);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#f00';
+  }
+  btn.textContent = '&#x25B6; Trigger Evolution';
+  btn.disabled = false;
+}
+loadEvolution();
+setInterval(loadEvolution, 60000);
+</script>
+
 </body>
 </html>
