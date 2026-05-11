@@ -102,6 +102,7 @@ Trigger a self-improvement cycle (Brainforge hybrid goal).
 
 ### GET /archive
 Dry-run count of L2 memories eligible for archiving (>30 days inactive).
+
 ### POST /archive
 Execute memory archiving: moves old L2 memories to archive table.
 - **Example:**
