@@ -15,7 +15,7 @@ jobs:
         with:
           node-version: '20'
       - name: Install dependencies
-        run: cd agents && npm install @octokit/rest rss-parser
+        run: npm install axios cheerio rss-parser node-cron marked node-fetch @octokit/rest @modelcontextprotocol/sdk p-queue
       - name: Run auto-update
         run: node agents/auto-update-brain.js
         env:
@@ -30,8 +30,9 @@ jobs:
         with:
           node-version: '20'
       - name: Install dependencies
-        run: cd agents && npm install @octokit/rest
+        run: npm install axios cheerio rss-parser node-cron marked node-fetch @octokit/rest @modelcontextprotocol/sdk p-queue
       - name: Run memory decay
         run: node agents/memory-decay.mjs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
