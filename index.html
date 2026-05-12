@@ -211,7 +211,30 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 ::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 .spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;display:inline-block}
 @keyframes spin{to{transform:rotate(360deg)}}
-</style>
+
+    /* Auto-Suggestion Panel - v3.8 */
+    .suggestion-panel { background: #111118; border: 1px solid #2a2a3a; border-radius: 12px; padding: 20px; margin: 20px 0; }
+    .suggestion-panel h3 { font-size: 1rem; font-weight: 700; margin-bottom: 4px; }
+    .sugg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+    .sugg-card { background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 10px; padding: 14px; transition: border-color .2s; }
+    .sugg-card:hover { border-color: #6366f1; }
+    .sugg-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+    .sugg-title { font-weight: 600; font-size: .875rem; }
+    .sugg-badge { font-size: .7rem; padding: 2px 7px; border-radius: 20px; white-space: nowrap; font-weight: 600; }
+    .sb-high { background: rgba(239,68,68,.2); color: #ef4444; }
+    .sb-medium { background: rgba(245,158,11,.2); color: #f59e0b; }
+    .sb-low { background: rgba(16,185,129,.2); color: #10b981; }
+    .sugg-desc { color: #94a3b8; font-size: .8rem; margin-bottom: 10px; line-height: 1.4; }
+    .sugg-footer { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    .sugg-dim { font-size: .7rem; padding: 2px 7px; border-radius: 20px; background: rgba(99,102,241,.15); color: #6366f1; }
+    .sugg-actions { display: flex; gap: 4px; }
+    .sugg-btn { padding: 3px 8px; border-radius: 5px; border: none; cursor: pointer; font-size: .75rem; font-weight: 600; }
+    .sugg-btn-act { background: #6366f1; color: white; }
+    .sugg-btn-dis { background: #374151; color: #9ca3af; }
+    .follow-up-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .follow-chip { background: #1a1a24; border: 1px solid #2a2a3a; border-radius: 16px; padding: 4px 12px; font-size: .8rem; color: #94a3b8; cursor: pointer; transition: all .2s; }
+    .follow-chip:hover { background: #2a2a3a; color: #e2e8f0; border-color: #6366f1; }
+  </style>
 </head>
 <body>
 <div id="toast-container"></div>
@@ -896,5 +919,74 @@ loadEvolution();
 setInterval(loadEvolution, 60000);
 </script>
 
+
+  <!-- Auto-Suggestion Panel v3.8 -->
+  <div class="suggestion-panel" id="suggestion-panel">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+      <h3>&#127919; Auto-Suggestions</h3>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span id="sugg-status" style="color:#94a3b8;font-size:.8rem">Loading...</span>
+        <a href="live-suggestions.html" style="color:#6366f1;text-decoration:none;font-size:.8rem">View All &rarr;</a>
+        <button onclick="loadSuggestions()" style="background:#1a1a24;border:1px solid #2a2a3a;color:#94a3b8;border-radius:6px;padding:3px 10px;font-size:.78rem;cursor:pointer">&orarr;</button>
+      </div>
+    </div>
+    <div class="sugg-grid" id="sugg-grid"><div style="color:#94a3b8;padding:8px">Loading suggestions...</div></div>
+  </div>
+
+  <script id="suggestion-engine-v38">
+  var _WU='https://caffeine-brain-worker.richard-brown-miami.workers.dev';
+  var _suggs=[];
+  function _pb(p){return p==='high'?'<span class="sugg-badge sb-high">High</span>':p==='medium'?'<span class="sugg-badge sb-medium">Med</span>':'<span class="sugg-badge sb-low">Low</span>';}
+  function _renderS(){
+    var g=document.getElementById('sugg-grid');if(!g)return;
+    var s=_suggs.filter(function(x){return !x.dismissed;}).slice(0,5);
+    if(!s.length){g.innerHTML='<div style="color:#94a3b8;padding:8px">No suggestions yet.</div>';return;}
+    g.innerHTML=s.map(function(x){
+      var dim=(x.dimension||'').replace(/_/g,' ');
+      var sid=(x.id||'x').replace(/[^a-z0-9]/gi,'');
+      return '<div class="sugg-card" id="sc-'+sid+'">'+
+        '<div class="sugg-top"><div class="sugg-title">'+(x.title||'Suggestion')+'</div>'+_pb(x.priority)+'</div>'+
+        '<div class="sugg-desc">'+(x.description||'')+'</div>'+
+        '<div class="sugg-footer"><span class="sugg-dim">'+dim+'</span>'+
+        '<div class="sugg-actions">'+
+        '<button class="sugg-btn sugg-btn-act" onclick="_aS(''+x.id+'',''+x.dimension+'',''+x.type+'')" >Act</button>'+
+        '<button class="sugg-btn sugg-btn-dis" onclick="_dS(''+x.id+'',''+sid+'')">&times;</button>'+
+        '</div></div></div>';
+    }).join('');
+  }
+  function loadSuggestions(){
+    var e=document.getElementById('sugg-status');
+    if(e)e.textContent='Loading...';
+    fetch(_WU+'/suggest').then(function(r){return r.json();}).then(function(d){
+      _suggs=d.suggestions||[];_renderS();
+      if(e)e.textContent=_suggs.length+' suggestions';
+    }).catch(function(){if(e)e.textContent='Error';});
+  }
+  function _dS(id,sid){
+    fetch(_WU+'/suggest/dismiss',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).catch(function(){});
+    var c=document.getElementById('sc-'+sid);if(c){c.style.opacity='0.3';setTimeout(function(){c.remove();},300);}
+    _suggs=_suggs.map(function(s){return s.id===id?Object.assign({},s,{dismissed:true}):s;});
+  }
+  function _aS(id,dim,type){
+    var m={auto_improvement:'live-evolution.html',skill_acquisition:'live-knowledge.html',identity_development:'live-knowledge.html',thinking_improvement:'live-evolution.html',feature_addition:'live-log.html',tool_integration:'live-knowledge.html'};
+    if(type==='next_action'){fetch(_WU+'/evolve',{method:'POST'}).then(function(){alert('Evolution triggered!');}).catch(function(e){alert(e.message);});return;}
+    window.location.href=m[dim]||'live-evolution.html';
+  }
+  window.addFollowUpChips=function(chips,inputId){
+    var input=document.getElementById(inputId);
+    if(!input||!chips||!chips.length)return;
+    var old=document.querySelector('.follow-up-chips');if(old)old.remove();
+    var div=document.createElement('div');div.className='follow-up-chips';
+    chips.slice(0,3).forEach(function(c){
+      var chip=document.createElement('span');chip.className='follow-chip';
+      chip.innerHTML=(c.type==='action'?'&#9889; ':'&#10067; ')+(c.text||c);
+      chip.onclick=function(){input.value=(c.text||c);input.focus();};
+      div.appendChild(chip);
+    });
+    input.parentNode.insertBefore(div,input.nextSibling);
+  };
+  window.loadSuggestions=loadSuggestions;
+  if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',function(){loadSuggestions();setInterval(loadSuggestions,60000);});}else{loadSuggestions();setInterval(loadSuggestions,60000);}
+  </script>
 </body>
 </html>
