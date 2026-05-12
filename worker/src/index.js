@@ -72,9 +72,9 @@ async function groq(msg,ctx,env){
 async function gemini(msg,ctx,env){
   const geminiKey = env.GEMINI_API_KEY || "";
   const sysPrompt = BRAIN_SYSTEM_PROMPT + (ctx ? '\n\n## ADDITIONAL CONTEXT:\n' + ctx : '');
-  const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key='+geminiKey,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:sysPrompt+'\n\nUser: '+msg}]}]})});
+  const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key='+geminiKey,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:sysPrompt+'\n\nUser: '+msg}]}]})});
   if(!r.ok)throw new Error('Gemini '+r.status);
-  const d=await r.json();return{reply:d.candidates[0].content.parts[0].text,model:'gemini/gemini-1.5-flash'};
+  const d=await r.json();return{reply:d.candidates[0].content.parts[0].text,model:'gemini/gemini-2.0-flash'};
 }
 async function chat(msg,ctx,env){try{return await groq(msg,ctx,env);}catch(e){try{return{...await gemini(msg,ctx,env),fallback:true,reason:e.message};}catch(e2){throw new Error('Both failed: '+e.message+' | '+e2.message);}}}
 // D1 helpers - schema-aware
@@ -104,7 +104,7 @@ async function sysStat(db){
   const eC=await db.prepare('SELECT COUNT(*) as c FROM events').first();
   const aC=await db.prepare('SELECT COUNT(*) as c FROM agents').first();
   const ev=await db.prepare('SELECT * FROM events ORDER BY ts DESC LIMIT 5').all();
-  return{memory_count:(mC&&mC.c)||0,event_count:(eC&&eC.c)||0,agent_count:(aC&&aC.c)||0,recent_events:(ev&&ev.results)||[],worker_version:'4.0',d1_status:'connected',mcp_protocol:'json-rpc-2.0',endpoints:['/health','/chat','/mcp','/log','/memory','/events','/agents','/archive','/operate','/search','/bash','/evolve']};
+  return{memory_count:(mC&&mC.c)||0,event_count:(eC&&eC.c)||0,agent_count:(aC&&aC.c)||0,recent_events:(ev&&ev.results)||[],worker_version:'4.1',d1_status:'connected',mcp_protocol:'json-rpc-2.0',endpoints:['/health','/chat','/mcp','/log','/memory','/events','/agents','/archive','/operate','/search','/bash','/evolve']};
 }
 async function operate(body,env){
   const db=env.DB;const action=(body&&body.action)||'read_state';const p=(body&&body.params)||{};
@@ -180,7 +180,7 @@ export default {
   async fetch(req,env,ctx){
     const u=new URL(req.url),p=u.pathname;
     if(req.method==='OPTIONS')return new Response(null,{headers:CORS});
-    if(p==='/health')return R({status:'ok',worker:'caffeine-brain',version:'4.0',primary:'groq/llama-3.3-70b-versatile',fallback:'gemini/gemini-1.5-flash',d1:'connected',mcp_protocol:'json-rpc-2.0',endpoints:['/health','/chat','/mcp','/log','/memory','/events','/agents','/archive','/operate','/search','/bash','/evolve']});
+    if(p==='/health')return R({status:'ok',worker:'caffeine-brain',version:'4.1',primary:'groq/llama-3.3-70b-versatile',fallback:'gemini/gemini-2.0-flash',d1:'connected',mcp_protocol:'json-rpc-2.0',endpoints:['/health','/chat','/mcp','/log','/memory','/events','/agents','/archive','/operate','/search','/bash','/evolve']});
     if(p==='/mcp'){
       if(req.method==='GET')return R({protocol_version:'2024-11-05',capabilities:{tools:{}},server_info:{name:'caffeine-brain',version:'3.1',description:'Autonomous AI brain for caffeine-brainforge',url:'https://caffeine-brain-worker.richard-brown-miami.workers.dev'},tools:TOOLS,status:'live'});
       if(req.method==='POST'){
