@@ -1,904 +1,345 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Knowledge Manager — Brainforge AI</title>
-<style>
-  :root {
-    --bg: #0d1117;
-    --bg-card: #161b22;
-    --bg-input: #21262d;
-    --border: #30363d;
-    --text: #e6edf3;
-    --text-muted: #8b949e;
-    --accent: #58a6ff;
-    --teal: #3fdbdb;
-    --green: #3fb950;
-    --red: #f85149;
-    --yellow: #d29922;
-    --radius: 8px;
-    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; }
-
-  nav {
-    background: var(--bg-card);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0 20px;
-    height: 56px;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-  }
-  .nav-logo {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-weight: 700;
-    font-size: 16px;
-    color: var(--teal);
-    text-decoration: none;
-    margin-right: 16px;
-  }
-  .nav-logo svg { width: 28px; height: 28px; }
-  .nav-links { display: flex; gap: 4px; flex: 1; }
-  .nav-link {
-    padding: 6px 12px;
-    border-radius: 6px;
-    color: var(--text-muted);
-    text-decoration: none;
-    font-size: 14px;
-    transition: all 0.2s;
-    cursor: pointer;
-    border: none;
-    background: none;
-  }
-  .nav-link:hover { color: var(--text); background: rgba(255,255,255,0.05); }
-  .nav-link.active { color: var(--accent); background: rgba(88,166,255,0.1); }
-  .nav-status {
-    font-size: 12px;
-    color: var(--text-muted);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .status-dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: var(--green);
-    animation: pulse 2s infinite;
-  }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-
-  .hero {
-    background: linear-gradient(135deg, rgba(63,219,219,0.08) 0%, rgba(88,166,255,0.06) 100%);
-    border-bottom: 1px solid var(--border);
-    padding: 28px 24px 20px;
-  }
-  .hero h1 { font-size: 26px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
-  .hero p { font-size: 14px; color: var(--text-muted); }
-  .hero-meta { display: flex; gap: 16px; margin-top: 12px; flex-wrap: wrap; }
-  .hero-badge {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 4px 10px;
-    font-size: 12px;
-    color: var(--text-muted);
-  }
-  .hero-badge span { color: var(--teal); font-weight: 600; }
-
-  .tabs-bar {
-    background: var(--bg-card);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    padding: 0 24px;
-  }
-  .tab-btn {
-    padding: 12px 18px;
-    border: none;
-    background: none;
-    color: var(--text-muted);
-    font-size: 14px;
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    transition: all 0.2s;
-    margin-bottom: -1px;
-  }
-  .tab-btn:hover { color: var(--text); }
-  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
-
-  .main-layout {
-    display: grid;
-    grid-template-columns: 360px 1fr;
-    min-height: calc(100vh - 56px - 148px - 40px);
-  }
-  @media (max-width: 768px) {
-    .main-layout { grid-template-columns: 1fr; }
-    .right-panel { border-left: none; border-top: 1px solid var(--border); }
-  }
-
-  .left-panel {
-    border-right: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    max-height: calc(100vh - 56px - 148px - 40px);
-  }
-  @media (max-width: 768px) { .left-panel { max-height: 50vh; } }
-
-  .panel-toolbar {
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    background: var(--bg-card);
-    flex-shrink: 0;
-  }
-  .search-input {
-    flex: 1;
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 7px 10px;
-    color: var(--text);
-    font-size: 13px;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-  .search-input:focus { border-color: var(--accent); }
-  .search-input::placeholder { color: var(--text-muted); }
-  .btn {
-    padding: 7px 12px;
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    border: 1px solid var(--border);
-    transition: all 0.2s;
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    white-space: nowrap;
-  }
-  .btn-primary { background: var(--accent); color: #0d1117; border-color: var(--accent); }
-  .btn-primary:hover { background: #79baff; }
-  .btn-ghost { background: transparent; color: var(--text-muted); }
-  .btn-ghost:hover { color: var(--text); background: rgba(255,255,255,0.05); }
-  .btn-teal { background: rgba(63,219,219,0.12); color: var(--teal); border-color: rgba(63,219,219,0.3); }
-  .btn-teal:hover { background: rgba(63,219,219,0.2); }
-  .btn-danger { background: rgba(248,81,73,0.12); color: var(--red); border-color: rgba(248,81,73,0.3); }
-  .btn-danger:hover { background: rgba(248,81,73,0.2); }
-
-  .memory-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: 8px;
-  }
-  .memory-list::-webkit-scrollbar { width: 6px; }
-  .memory-list::-webkit-scrollbar-track { background: transparent; }
-  .memory-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-
-  .memory-item {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 12px;
-    margin-bottom: 6px;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .memory-item:hover { border-color: var(--accent); background: rgba(88,166,255,0.04); }
-  .memory-item.selected { border-color: var(--accent); background: rgba(88,166,255,0.08); }
-  .memory-item.pinned { border-left: 3px solid var(--teal); }
-
-  .item-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 6px; }
-  .item-key { font-size: 13px; font-weight: 600; color: var(--accent); word-break: break-word; flex: 1; }
-  .item-actions { display: flex; gap: 4px; flex-shrink: 0; }
-  .icon-btn {
-    width: 26px; height: 26px;
-    background: transparent;
-    border: none;
-    border-radius: 4px;
-    color: var(--text-muted);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    transition: all 0.15s;
-  }
-  .icon-btn:hover { background: rgba(255,255,255,0.08); color: var(--text); }
-  .icon-btn.is-pinned { color: var(--teal); }
-  .item-value {
-    font-size: 12px;
-    color: var(--text-muted);
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    line-height: 1.5;
-  }
-  .item-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
-  .stars { color: var(--yellow); font-size: 12px; letter-spacing: 1px; }
-  .item-type-badge {
-    font-size: 10px;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-weight: 500;
-  }
-  .type-knowledge { background: rgba(88,166,255,0.15); color: var(--accent); }
-  .type-skills { background: rgba(63,219,219,0.15); color: var(--teal); }
-  .type-learning { background: rgba(210,153,34,0.15); color: var(--yellow); }
-  .type-weights { background: rgba(63,185,80,0.15); color: var(--green); }
-
-  .empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    padding: 48px 24px;
-    color: var(--text-muted);
-    text-align: center;
-  }
-  .empty-title { font-size: 15px; font-weight: 600; color: var(--text); }
-  .empty-sub { font-size: 13px; }
-  .spinner {
-    width: 32px; height: 32px;
-    border: 3px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .loading-state {
-    display: flex; flex-direction: column; align-items: center;
-    gap: 12px; padding: 48px; color: var(--text-muted); font-size: 13px;
-  }
-
-  .right-panel {
-    display: flex;
-    flex-direction: column;
-    background: var(--bg);
-    overflow: hidden;
-    max-height: calc(100vh - 56px - 148px - 40px);
-  }
-  @media (max-width: 768px) { .right-panel { max-height: none; } }
-
-  .editor-header {
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-card);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    flex-shrink: 0;
-  }
-  .editor-title { font-size: 15px; font-weight: 600; }
-  .editor-indicators { display: flex; align-items: center; gap: 8px; }
-  .autosave-badge {
-    font-size: 11px;
-    padding: 3px 8px;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    opacity: 0;
-    transition: opacity 0.3s;
-  }
-  .autosave-badge.visible { opacity: 1; }
-  .autosave-saving { background: rgba(210,153,34,0.15); color: var(--yellow); }
-  .autosave-saved { background: rgba(63,185,80,0.15); color: var(--green); }
-
-  .editor-body {
-    flex: 1;
-    padding: 20px;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-  .field-group { display: flex; flex-direction: column; gap: 6px; }
-  .field-label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
-  .field-input {
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 9px 12px;
-    color: var(--text);
-    font-size: 14px;
-    outline: none;
-    transition: border-color 0.2s;
-    font-family: var(--font);
-    width: 100%;
-  }
-  .field-input:focus { border-color: var(--accent); }
-  .field-input::placeholder { color: var(--text-muted); }
-  textarea.field-input { min-height: 160px; resize: vertical; line-height: 1.6; }
-  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  @media (max-width: 500px) { .field-row { grid-template-columns: 1fr; } }
-  select.field-input { cursor: pointer; }
-
-  .star-selector { display: flex; gap: 6px; align-items: center; height: 40px; }
-  .star-btn {
-    background: none;
-    border: none;
-    font-size: 22px;
-    cursor: pointer;
-    color: var(--border);
-    transition: color 0.15s, transform 0.1s;
-    padding: 2px;
-    line-height: 1;
-  }
-  .star-btn:hover { transform: scale(1.2); }
-  .star-btn.active { color: var(--yellow); }
-
-  .editor-footer {
-    padding: 14px 20px;
-    border-top: 1px solid var(--border);
-    background: var(--bg-card);
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    flex-shrink: 0;
-  }
-  .editor-footer-right { margin-left: auto; display: flex; gap: 8px; }
-
-  .placeholder-message {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    color: var(--text-muted);
-    padding: 48px;
-    text-align: center;
-  }
-  .placeholder-message p { font-size: 14px; }
-
-  .toast-container {
-    position: fixed;
-    bottom: 24px;
-    right: 24px;
-    z-index: 9999;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .toast {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 12px 16px;
-    font-size: 13px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-    animation: slideIn 0.25s ease;
-    min-width: 240px;
-    max-width: 360px;
-    transition: opacity 0.3s, transform 0.3s;
-  }
-  .toast.success { border-left: 3px solid var(--green); }
-  .toast.error { border-left: 3px solid var(--red); }
-  .toast.info { border-left: 3px solid var(--accent); }
-  @keyframes slideIn { from { transform: translateX(100%); opacity:0; } to { transform: translateX(0); opacity:1; } }
-
-  .stats-bar {
-    background: var(--bg-card);
-    border-top: 1px solid var(--border);
-    padding: 8px 24px;
-    display: flex;
-    gap: 24px;
-    align-items: center;
-    font-size: 12px;
-    color: var(--text-muted);
-    flex-wrap: wrap;
-  }
-  .stat-item { display: flex; gap: 5px; align-items: center; }
-  .stat-val { color: var(--text); font-weight: 600; }
-  .refresh-info { margin-left: auto; color: var(--text-muted); font-size: 11px; }
-
-  .progress-bar {
-    height: 2px;
-    background: transparent;
-    position: fixed;
-    top: 0;
-    left: 0;
-    z-index: 999;
-    transition: width 0.3s;
-  }
-  .progress-bar.active { background: var(--teal); }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Brainforge — Knowledge Manager</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --bg2: #111118;
+      --bg3: #1a1a24;
+      --border: #2a2a3a;
+      --accent: #6c63ff;
+      --accent2: #a78bfa;
+      --green: #22c55e;
+      --yellow: #eab308;
+      --red: #ef4444;
+      --text: #e2e8f0;
+      --text2: #94a3b8;
+      --text3: #64748b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+    nav { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; position: sticky; top: 0; z-index: 100; }
+    nav .brand { font-weight: 700; font-size: 1.1rem; color: var(--accent2); flex: 1; }
+    nav a { color: var(--text2); text-decoration: none; font-size: 0.875rem; padding: 6px 12px; border-radius: 6px; transition: all 0.2s; }
+    nav a:hover, nav a.active { background: var(--bg3); color: var(--accent2); }
+    .container { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
+    .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+    .header h1 { font-size: 1.5rem; font-weight: 700; }
+    .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+    .badge-live { background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+    .badge-live::before { content: ''; width: 6px; height: 6px; background: var(--green); border-radius: 50%; animation: pulse 1.5s ease-in-out infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .stat-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+    .stat-card .label { font-size: 0.75rem; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-card .value { font-size: 1.5rem; font-weight: 700; color: var(--accent2); margin-top: 4px; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 768px) { .grid2 { grid-template-columns: 1fr; } }
+    .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+    .card-title { font-size: 1rem; font-weight: 600; margin-bottom: 16px; color: var(--accent2); display: flex; align-items: center; gap: 8px; }
+    .search-bar { display: flex; gap: 8px; margin-bottom: 16px; }
+    .search-bar input { flex: 1; background: var(--bg3); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 8px; font-size: 0.875rem; outline: none; }
+    .search-bar input:focus { border-color: var(--accent); }
+    .filter-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+    .filter-tab { padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; cursor: pointer; border: 1px solid var(--border); background: var(--bg3); color: var(--text2); transition: all 0.2s; }
+    .filter-tab.active, .filter-tab:hover { background: var(--accent); color: white; border-color: var(--accent); }
+    .memory-list { display: flex; flex-direction: column; gap: 8px; max-height: 500px; overflow-y: auto; }
+    .memory-item { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 12px; transition: border-color 0.2s; }
+    .memory-item:hover { border-color: var(--accent); }
+    .memory-item .key { font-size: 0.75rem; color: var(--accent); font-weight: 600; font-family: monospace; }
+    .memory-item .val { font-size: 0.875rem; color: var(--text); margin-top: 4px; word-break: break-word; }
+    .memory-item .meta { font-size: 0.7rem; color: var(--text3); margin-top: 6px; display: flex; gap: 12px; flex-wrap: wrap; }
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: block; font-size: 0.75rem; color: var(--text2); margin-bottom: 4px; }
+    .form-group input, .form-group textarea, .form-group select { width: 100%; background: var(--bg3); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 8px; font-size: 0.875rem; outline: none; font-family: inherit; }
+    .form-group textarea { resize: vertical; min-height: 80px; }
+    .form-group input:focus, .form-group textarea:focus { border-color: var(--accent); }
+    .btn { padding: 8px 16px; border-radius: 8px; font-size: 0.875rem; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { background: #5a52d5; }
+    .btn-secondary { background: var(--bg3); color: var(--text2); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--border); }
+    .btn-danger { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+    .btn-danger:hover { background: rgba(239,68,68,0.25); }
+    .agent-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+    .agent-card .name { font-weight: 600; color: var(--accent2); }
+    .agent-card .role { font-size: 0.75rem; color: var(--text3); margin-top: 2px; }
+    .agent-card .last { font-size: 0.7rem; color: var(--text3); margin-top: 6px; }
+    .agent-list { display: flex; flex-direction: column; gap: 8px; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .status-active { background: var(--green); }
+    .toast { position: fixed; bottom: 24px; right: 24px; background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; padding: 12px 20px; font-size: 0.875rem; z-index: 999; transform: translateY(100px); opacity: 0; transition: all 0.3s; }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.success { border-color: var(--green); color: var(--green); }
+    .toast.error { border-color: var(--red); color: var(--red); }
+    .pagination { display: flex; gap: 8px; justify-content: center; margin-top: 12px; }
+    .page-btn { padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; cursor: pointer; border: 1px solid var(--border); background: var(--bg3); color: var(--text2); }
+    .page-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+    .loading { color: var(--text3); font-size: 0.875rem; padding: 20px; text-align: center; }
+    .refresh-info { font-size: 0.7rem; color: var(--text3); }
+    ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: var(--bg); } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
 </head>
 <body>
-
-<div id="progressBar" class="progress-bar" style="width:0"></div>
-
-<nav>
-  <a class="nav-logo" href="index.html">
-    <svg viewBox="0 0 32 32" fill="none">
-      <circle cx="16" cy="16" r="14" stroke="#3fdbdb" stroke-width="2"/>
-      <circle cx="16" cy="16" r="6" fill="#3fdbdb" opacity="0.8"/>
-      <line x1="16" y1="2" x2="16" y2="8" stroke="#3fdbdb" stroke-width="2"/>
-      <line x1="16" y1="24" x2="16" y2="30" stroke="#3fdbdb" stroke-width="2"/>
-      <line x1="2" y1="16" x2="8" y2="16" stroke="#3fdbdb" stroke-width="2"/>
-      <line x1="24" y1="16" x2="30" y2="16" stroke="#3fdbdb" stroke-width="2"/>
-    </svg>
-    Brainforge AI
-  </a>
-  <div class="nav-links">
-    <a class="nav-link" href="index.html">Dashboard</a>
-    <a class="nav-link active" href="live-knowledge.html">Knowledge</a>
-    <a class="nav-link" href="live-evolution.html">Evolution</a>
-    <a class="nav-link" href="live-log.html">Live Log</a>
-  </div>
-  <div class="nav-status">
-    <div class="status-dot"></div>
-    <span id="workerStatus">Connecting…</span>
-  </div>
-</nav>
-
-<div class="hero">
-  <h1>🧠 Knowledge Manager</h1>
-  <p>Browse, edit, and organize Brainforge AI’s persistent memory — stored in Cloudflare D1</p>
-  <div class="hero-meta">
-    <div class="hero-badge">Total: <span id="totalCount">—</span></div>
-    <div class="hero-badge">Knowledge: <span id="countKnowledge">—</span></div>
-    <div class="hero-badge">Skills: <span id="countSkills">—</span></div>
-    <div class="hero-badge">Learning: <span id="countLearning">—</span></div>
-    <div class="hero-badge">Weights: <span id="countWeights">—</span></div>
-    <div class="hero-badge">Auto-refresh: <span style="color:var(--teal)">10s</span></div>
-  </div>
-</div>
-
-<div class="tabs-bar">
-  <button class="tab-btn active" onclick="switchTab('knowledge')">&#128218; Knowledge</button>
-  <button class="tab-btn" onclick="switchTab('skills')">&#9889; Skills</button>
-  <button class="tab-btn" onclick="switchTab('learning')">&#127891; Learning</button>
-  <button class="tab-btn" onclick="switchTab('weights')">&#9878; Weights</button>
-  <button class="tab-btn" onclick="switchTab('all')">&#128193; All</button>
-</div>
-
-<div class="main-layout">
-  <div class="left-panel">
-    <div class="panel-toolbar">
-      <input type="text" class="search-input" id="searchInput" placeholder="Search keys and values…" oninput="filterItems()">
-      <button class="btn btn-ghost" onclick="fetchMemories()" title="Refresh">↺</button>
-      <button class="btn btn-teal" onclick="newMemory()">+ New</button>
-    </div>
-    <div class="memory-list" id="memoryList">
-      <div class="loading-state"><div class="spinner"></div><span>Loading memories…</span></div>
-    </div>
-  </div>
-
-  <div class="right-panel">
-    <div class="editor-header">
-      <div class="editor-title" id="editorTitle">Select a memory to edit</div>
-      <div class="editor-indicators">
-        <div class="autosave-badge autosave-saving" id="savingBadge">⏳ Auto-saving…</div>
-        <div class="autosave-badge autosave-saved" id="savedBadge">✓ Saved</div>
+  <nav>
+    <div class="brand">🧠 Brainforge</div>
+    <a href="index.html">Dashboard</a>
+    <a href="live-knowledge.html" class="active">Knowledge</a>
+    <a href="live-evolution.html">Evolution</a>
+    <a href="live-log.html">Live Log</a>
+  </nav>
+  <div class="container">
+    <div class="header">
+      <h1>📚 Knowledge Manager</h1>
+      <div style="display:flex;gap:10px;align-items:center">
+        <span class="badge badge-live">LIVE</span>
+        <span class="refresh-info" id="refreshInfo">Refreshes in 15s</span>
       </div>
     </div>
-    <div id="editorPlaceholder" class="placeholder-message">
-      <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
-        <rect x="8" y="12" width="40" height="32" rx="4" stroke="#8b949e" stroke-width="2"/>
-        <line x1="16" y1="22" x2="40" y2="22" stroke="#8b949e" stroke-width="2"/>
-        <line x1="16" y1="28" x2="36" y2="28" stroke="#8b949e" stroke-width="2"/>
-        <line x1="16" y1="34" x2="30" y2="34" stroke="#8b949e" stroke-width="2"/>
-      </svg>
-      <p>Select a memory from the list to edit it,<br>or click <strong>+ New</strong> to create one</p>
+    <div class="stats">
+      <div class="stat-card"><div class="label">Total Memories</div><div class="value" id="totalMemories">—</div></div>
+      <div class="stat-card"><div class="label">Agents Active</div><div class="value" id="totalAgents">—</div></div>
+      <div class="stat-card"><div class="label">Last Updated</div><div class="value" style="font-size:0.9rem" id="lastUpdated">—</div></div>
+      <div class="stat-card"><div class="label">Knowledge Keys</div><div class="value" id="knowledgeKeys">—</div></div>
     </div>
-    <div id="editorForm" style="display:none; flex:1; flex-direction:column; overflow:hidden;">
-      <div class="editor-body">
-        <div class="field-group">
-          <label class="field-label">Memory Key</label>
-          <input type="text" id="fieldKey" class="field-input" placeholder="e.g. python_skill, goal_v2, nlp_facts…">
+    <div class="grid2">
+      <div>
+        <div class="card">
+          <div class="card-title">🗃️ Memory Store</div>
+          <div class="search-bar">
+            <input type="text" id="searchInput" placeholder="Search memories..." oninput="filterMemories()">
+            <button class="btn btn-secondary" onclick="loadMemories()">↻</button>
+          </div>
+          <div class="filter-tabs">
+            <div class="filter-tab active" onclick="setFilter('all',this)">All</div>
+            <div class="filter-tab" onclick="setFilter('knowledge',this)">Knowledge</div>
+            <div class="filter-tab" onclick="setFilter('skill',this)">Skills</div>
+            <div class="filter-tab" onclick="setFilter('dim_',this)">Dimensions</div>
+            <div class="filter-tab" onclick="setFilter('hybrid',this)">Goals</div>
+          </div>
+          <div class="memory-list" id="memoryList"><div class="loading">Loading memories...</div></div>
+          <div class="pagination" id="pagination"></div>
         </div>
-        <div class="field-group">
-          <label class="field-label">Value / Content</label>
-          <textarea id="fieldValue" class="field-input" placeholder="Enter the memory content, facts, or notes…"></textarea>
+        <div class="card" style="margin-top:20px">
+          <div class="card-title">🔍 Fetch by Key</div>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="fetchKeyInput" placeholder="Enter memory key..." style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px;font-size:0.875rem;outline:none">
+            <button class="btn btn-primary" onclick="fetchByKey()">Fetch</button>
+          </div>
+          <div id="fetchResult" style="margin-top:12px"></div>
         </div>
-        <div class="field-row">
-          <div class="field-group">
-            <label class="field-label">Category</label>
-            <select id="fieldCategory" class="field-input">
-              <option value="knowledge">&#128218; Knowledge</option>
-              <option value="skills">&#9889; Skills</option>
-              <option value="learning">&#127891; Learning</option>
-              <option value="weights">&#9878; External Weights</option>
+      </div>
+      <div>
+        <div class="card">
+          <div class="card-title">➕ Add Memory</div>
+          <div class="form-group">
+            <label>Key</label>
+            <input type="text" id="newKey" placeholder="e.g. skill_python, knowledge_ai">
+          </div>
+          <div class="form-group">
+            <label>Value</label>
+            <textarea id="newValue" placeholder="Memory content..."></textarea>
+          </div>
+          <div class="form-group">
+            <label>Type</label>
+            <select id="newType">
+              <option value="knowledge">Knowledge</option>
+              <option value="skill">Skill</option>
+              <option value="learning">Learning</option>
+              <option value="goal">Goal</option>
+              <option value="fact">Fact</option>
             </select>
           </div>
-          <div class="field-group">
-            <label class="field-label">Priority</label>
-            <div class="star-selector" id="starSelector">
-              <button class="star-btn" onclick="setPriority(1)" data-star="1">★</button>
-              <button class="star-btn" onclick="setPriority(2)" data-star="2">★</button>
-              <button class="star-btn" onclick="setPriority(3)" data-star="3">★</button>
-              <button class="star-btn" onclick="setPriority(4)" data-star="4">★</button>
-              <button class="star-btn" onclick="setPriority(5)" data-star="5">★</button>
-            </div>
-          </div>
+          <button class="btn btn-primary" onclick="addMemory()" style="width:100%">Save to Brain</button>
         </div>
-        <div class="field-group">
-          <label class="field-label">Tags (comma-separated, optional)</label>
-          <input type="text" id="fieldTags" class="field-input" placeholder="e.g. core, verified, important">
-        </div>
-        <div id="lastSavedInfo" style="font-size:12px; color:var(--text-muted); display:none;">
-          Last saved: <span id="lastSavedTime">—</span>
-        </div>
-      </div>
-      <div class="editor-footer">
-        <button class="btn btn-ghost btn-danger" id="deleteBtn" onclick="deleteMemory()" style="display:none">🗑 Delete</button>
-        <div class="editor-footer-right">
-          <button class="btn btn-ghost" onclick="cancelEdit()">Cancel</button>
-          <button class="btn btn-primary" onclick="saveMemory()">💾 Save Memory</button>
+        <div class="card" style="margin-top:20px">
+          <div class="card-title">🤖 Agent Registry</div>
+          <div class="agent-list" id="agentList"><div class="loading">Loading agents...</div></div>
         </div>
       </div>
     </div>
   </div>
-</div>
+  <div class="toast" id="toast"></div>
 
-<div class="stats-bar">
-  <div class="stat-item">Worker: <span class="stat-val" id="statsWorker">—</span></div>
-  <div class="stat-item">D1: <span class="stat-val" id="statsD1">—</span></div>
-  <div class="stat-item">Version: <span class="stat-val" id="statsVersion">—</span></div>
-  <div class="refresh-info">Next refresh in <span id="countdown">10</span>s</div>
-</div>
+  <script>
+    const WORKER = 'https://caffeine-brain-worker.richard-brown-miami.workers.dev';
+    let allMemories = [];
+    let currentFilter = 'all';
+    let currentPage = 1;
+    const PAGE_SIZE = 20;
+    let countdown = 15;
+    let countdownTimer;
 
-<div class="toast-container" id="toastContainer"></div>
+    const KNOWN_KEYS = [
+      'user_name','user_preferences','hybrid_goal','brain_version','system_identity',
+      'skill_acquisition','identity_development','thinking_improvement','feature_addition','tool_integration','auto_improvement',
+      'dim_auto_improvement','dim_skill_acquisition','dim_identity_development','dim_thinking_improvement','dim_feature_addition','dim_tool_integration',
+      'groq_model','gemini_model','worker_version','last_evolution','evolution_cycles',
+      'conflict_0','conflict_1','conflict_2','unverified_0','unverified_1',
+      'knowledge_0','knowledge_1','knowledge_2','knowledge_3','knowledge_4',
+      'learning_0','learning_1','learning_2'
+    ];
 
-<script>
-const WORKER = 'https://caffeine-brain-worker.richard-brown-miami.workers.dev';
-let allMemories = [];
-let filteredMemories = [];
-let activeTab = 'knowledge';
-let selectedKey = null;
-let currentPriority = 3;
-let autoSaveTimer = null;
-let countdownVal = 10;
-let countdownTimer = null;
-let pinned = JSON.parse(localStorage.getItem('bf_pinned') || '[]');
-let priorities = JSON.parse(localStorage.getItem('bf_priorities') || '{}');
-let categories = JSON.parse(localStorage.getItem('bf_categories') || '{}');
-
-async function checkHealth() {
-  try {
-    const r = await fetch(WORKER + '/health');
-    const d = await r.json();
-    document.getElementById('workerStatus').textContent = 'v' + (d.version || '?') + ' live';
-    document.getElementById('statsWorker').textContent = 'online';
-    document.getElementById('statsD1').textContent = d.d1 || 'connected';
-    document.getElementById('statsVersion').textContent = d.version || '?';
-  } catch(e) {
-    document.getElementById('workerStatus').textContent = 'offline';
-    document.getElementById('statsWorker').textContent = 'error';
-  }
-}
-
-const KNOWN_KEYS = [
-  'knowledge','skills','learning','weights','hybrid_goal',
-  'auto_improvement','skill_acquisition','identity_development',
-  'thinking_improvement','feature_addition','tool_integration',
-  'system','capability','goal','chat_context','search_result',
-  'brain_prompt','evolution_log','conflict_log','memory_summary'
-];
-
-async function fetchMemories() {
-  showProgress(10);
-  const results = [];
-  for (const k of KNOWN_KEYS) {
-    try {
-      const r = await fetch(WORKER + '/memory?key=' + encodeURIComponent(k));
-      if (r.ok) {
-        const d = await r.json();
-        if (d && d.value !== undefined && d.value !== null && d.value !== '__deleted__') {
-          results.push({ key: k, value: String(d.value), created_at: d.created_at || null });
+    async function loadMemories() {
+      try {
+        const results = [];
+        const batchSize = 5;
+        for (let i = 0; i < KNOWN_KEYS.length; i += batchSize) {
+          const batch = KNOWN_KEYS.slice(i, i + batchSize);
+          const fetches = batch.map(k => 
+            fetch(`${WORKER}/memory?key=${encodeURIComponent(k)}`)
+              .then(r => r.json())
+              .then(d => ({ key: k, value: d.value, found: d.found, updated_at: d.updated_at, access_count: d.access_count }))
+              .catch(() => ({ key: k, value: null, found: false }))
+          );
+          const batchResults = await Promise.all(fetches);
+          results.push(...batchResults.filter(r => r.found));
         }
-      }
-    } catch(e) {}
-  }
-  showProgress(55);
-  try {
-    const evr = await fetch(WORKER + '/events');
-    if (evr.ok) {
-      const evd = await evr.json();
-      const evts = Array.isArray(evd) ? evd : (evd.events || []);
-      const extraKeys = new Set();
-      for (const ev of evts.slice(0, 30)) {
-        if (ev.dimension) extraKeys.add(ev.dimension);
-        if (ev.key) extraKeys.add(ev.key);
-        if (ev.type && ev.type.length < 40) extraKeys.add(ev.type);
-      }
-      for (const ek of extraKeys) {
-        if (!results.find(r => r.key === ek)) {
-          try {
-            const mr = await fetch(WORKER + '/memory?key=' + encodeURIComponent(ek));
-            if (mr.ok) {
-              const md = await mr.json();
-              if (md && md.value && md.value !== '__deleted__') {
-                results.push({ key: ek, value: String(md.value), created_at: md.created_at || null });
-              }
-            }
-          } catch(e) {}
-        }
+        allMemories = results;
+        document.getElementById('totalMemories').textContent = results.length;
+        document.getElementById('knowledgeKeys').textContent = KNOWN_KEYS.length;
+        document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString();
+        renderMemories();
+      } catch(e) {
+        document.getElementById('memoryList').innerHTML = '<div class="loading" style="color:var(--red)">Error loading memories</div>';
       }
     }
-  } catch(e) {}
-  showProgress(90);
-  allMemories = results.map(item => ({
-    key: item.key,
-    value: item.value,
-    created_at: item.created_at,
-    pinned: pinned.includes(item.key),
-    priority: priorities[item.key] || 3,
-    category: categories[item.key] || guessCategory(item.key)
-  }));
-  updateCounts();
-  filterItems();
-  showProgress(100);
-  setTimeout(() => showProgress(0), 500);
-}
 
-function guessCategory(key) {
-  const k = key.toLowerCase();
-  if (['skill','python','javascript','code','api','framework','tool'].some(w => k.includes(w))) return 'skills';
-  if (['learn','lesson','study','note','course','tutorial'].some(w => k.includes(w))) return 'learning';
-  if (['weight','model','external','vector','embed'].some(w => k.includes(w))) return 'weights';
-  return 'knowledge';
-}
+    function filterMemories() {
+      currentPage = 1;
+      renderMemories();
+    }
 
-function updateCounts() {
-  document.getElementById('totalCount').textContent = allMemories.length;
-  document.getElementById('countKnowledge').textContent = allMemories.filter(m => m.category === 'knowledge').length;
-  document.getElementById('countSkills').textContent = allMemories.filter(m => m.category === 'skills').length;
-  document.getElementById('countLearning').textContent = allMemories.filter(m => m.category === 'learning').length;
-  document.getElementById('countWeights').textContent = allMemories.filter(m => m.category === 'weights').length;
-}
+    function setFilter(f, el) {
+      currentFilter = f;
+      currentPage = 1;
+      document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+      el.classList.add('active');
+      renderMemories();
+    }
 
-function switchTab(tab) {
-  activeTab = tab;
-  document.querySelectorAll('.tab-btn').forEach((b, i) => {
-    b.classList.toggle('active', ['knowledge','skills','learning','weights','all'][i] === tab);
-  });
-  filterItems();
-}
+    function renderMemories() {
+      const search = document.getElementById('searchInput').value.toLowerCase();
+      let filtered = allMemories.filter(m => {
+        const matchFilter = currentFilter === 'all' || m.key.startsWith(currentFilter);
+        const matchSearch = !search || m.key.toLowerCase().includes(search) || (m.value && String(m.value).toLowerCase().includes(search));
+        return matchFilter && matchSearch;
+      });
+      const total = filtered.length;
+      const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+      const start = (currentPage - 1) * PAGE_SIZE;
+      const page = filtered.slice(start, start + PAGE_SIZE);
 
-function filterItems() {
-  const q = document.getElementById('searchInput').value.trim().toLowerCase();
-  filteredMemories = allMemories.filter(m => {
-    const matchTab = activeTab === 'all' || m.category === activeTab;
-    const matchQ = !q || m.key.toLowerCase().includes(q) || m.value.toLowerCase().includes(q);
-    return matchTab && matchQ;
-  });
-  filteredMemories.sort((a,b) => (b.pinned?1:0)-(a.pinned?1:0) || b.priority - a.priority);
-  renderList();
-}
+      const list = document.getElementById('memoryList');
+      if (!page.length) { list.innerHTML = '<div class="loading">No memories found</div>'; return; }
+      list.innerHTML = page.map(m => `
+        <div class="memory-item">
+          <div class="key">🔑 ${escHtml(m.key)}</div>
+          <div class="val">${escHtml(typeof m.value === 'object' ? JSON.stringify(m.value, null, 2) : String(m.value || ''))}</div>
+          <div class="meta">
+            ${m.access_count ? `<span>Accessed: ${m.access_count}x</span>` : ''}
+            ${m.updated_at ? `<span>Updated: ${new Date(m.updated_at).toLocaleString()}</span>` : ''}
+          </div>
+        </div>`).join('');
 
-function renderList() {
-  const list = document.getElementById('memoryList');
-  if (!filteredMemories.length) {
-    list.innerHTML = '<div class="empty-state"><svg width="48" height="48" viewBox="0 0 48 48" fill="none"><rect x="8" y="12" width="32" height="26" rx="3" stroke="#8b949e" stroke-width="2"/><line x1="14" y1="20" x2="34" y2="20" stroke="#8b949e" stroke-width="2"/><line x1="14" y1="26" x2="28" y2="26" stroke="#8b949e" stroke-width="2"/></svg><div class="empty-title">No items found</div><div class="empty-sub">Try a different search or tab, or add a new memory</div></div>';
-    return;
-  }
-  list.innerHTML = filteredMemories.map((m,i) => {
-    const stars = '\u2605'.repeat(m.priority) + '\u2606'.repeat(5-m.priority);
-    const typeClass = 'type-' + m.category;
-    const isSelected = m.key === selectedKey ? ' selected' : '';
-    const isPinned = m.pinned ? ' pinned' : '';
-    const pinClass = m.pinned ? ' is-pinned' : '';
-    const pinIcon = m.pinned ? '\uD83D\uDCCC' : '\uD83D\uDCCD';
-    return '<div class="memory-item' + isSelected + isPinned + '" onclick="selectItem(\'' + escKey(m.key) + '\')">' +
-      '<div class="item-header">' +
-        '<div class="item-key">' + escHtml(m.key) + '</div>' +
-        '<div class="item-actions">' +
-          '<button class="icon-btn' + pinClass + '" onclick="togglePin(event,\'' + escKey(m.key) + '\')" title="Pin">' + pinIcon + '</button>' +
-        '</div>' +
-      '</div>' +
-      '<div class="item-value">' + escHtml(m.value.substring(0,180)) + '</div>' +
-      '<div class="item-footer">' +
-        '<span class="stars" title="Priority ' + m.priority + '/5">' + stars + '</span>' +
-        '<span class="item-type-badge ' + typeClass + '">' + m.category + '</span>' +
-      '</div>' +
-    '</div>';
-  }).join('');
-}
+      const pag = document.getElementById('pagination');
+      if (pages <= 1) { pag.innerHTML = ''; return; }
+      let html = '';
+      for (let i = 1; i <= pages; i++) html += `<button class="page-btn${i===currentPage?' active':''}" onclick="gotoPage(${i})">${i}</button>`;
+      pag.innerHTML = html;
+    }
 
-function escHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-function escKey(s) {
-  return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-}
+    function gotoPage(n) { currentPage = n; renderMemories(); }
+    function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-function selectItem(key) {
-  selectedKey = key;
-  const m = allMemories.find(x => x.key === key);
-  if (!m) return;
-  renderList();
-  document.getElementById('editorPlaceholder').style.display = 'none';
-  const form = document.getElementById('editorForm');
-  form.style.display = 'flex';
-  form.style.flexDirection = 'column';
-  document.getElementById('editorTitle').textContent = '\u270F\uFE0F ' + m.key;
-  document.getElementById('fieldKey').value = m.key;
-  document.getElementById('fieldValue').value = m.value;
-  document.getElementById('fieldCategory').value = m.category;
-  document.getElementById('fieldTags').value = '';
-  currentPriority = m.priority;
-  renderStars();
-  document.getElementById('deleteBtn').style.display = 'inline-flex';
-  document.getElementById('lastSavedInfo').style.display = 'block';
-  document.getElementById('lastSavedTime').textContent = m.created_at ? new Date(m.created_at).toLocaleString() : 'Unknown';
-  bindAutoSave();
-}
+    async function fetchByKey() {
+      const key = document.getElementById('fetchKeyInput').value.trim();
+      if (!key) return;
+      try {
+        const r = await fetch(`${WORKER}/memory?key=${encodeURIComponent(key)}`);
+        const d = await r.json();
+        const el = document.getElementById('fetchResult');
+        if (d.found) {
+          el.innerHTML = `<div class="memory-item"><div class="key">🔑 ${escHtml(key)}</div><div class="val">${escHtml(typeof d.value==='object'?JSON.stringify(d.value,null,2):String(d.value))}</div><div class="meta"><span>Access count: ${d.access_count||0}</span>${d.updated_at?`<span>Updated: ${new Date(d.updated_at).toLocaleString()}</span>`:''}</div></div>`;
+        } else {
+          el.innerHTML = `<div class="memory-item" style="border-color:var(--red)"><div class="val" style="color:var(--text3)">Key not found: ${escHtml(key)}</div></div>`;
+        }
+      } catch(e) { showToast('Fetch failed: '+e.message,'error'); }
+    }
 
-function newMemory() {
-  selectedKey = null;
-  document.getElementById('editorPlaceholder').style.display = 'none';
-  const form = document.getElementById('editorForm');
-  form.style.display = 'flex';
-  form.style.flexDirection = 'column';
-  document.getElementById('editorTitle').textContent = '\u2728 New Memory';
-  document.getElementById('fieldKey').value = '';
-  document.getElementById('fieldValue').value = '';
-  document.getElementById('fieldCategory').value = activeTab === 'all' ? 'knowledge' : activeTab;
-  document.getElementById('fieldTags').value = '';
-  document.getElementById('deleteBtn').style.display = 'none';
-  document.getElementById('lastSavedInfo').style.display = 'none';
-  currentPriority = 3;
-  renderStars();
-  bindAutoSave();
-  setTimeout(() => document.getElementById('fieldKey').focus(), 50);
-}
+    async function addMemory() {
+      const key = document.getElementById('newKey').value.trim();
+      const value = document.getElementById('newValue').value.trim();
+      const type = document.getElementById('newType').value;
+      if (!key || !value) { showToast('Key and value required','error'); return; }
+      try {
+        const r = await fetch(`${WORKER}/memory`, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({key, value, type})
+        });
+        const d = await r.json();
+        if (d.success || r.ok) {
+          showToast('Memory saved! 🧠','success');
+          document.getElementById('newKey').value = '';
+          document.getElementById('newValue').value = '';
+          if (!KNOWN_KEYS.includes(key)) KNOWN_KEYS.push(key);
+          await loadMemories();
+        } else {
+          showToast('Save failed: '+(d.error||'unknown'),'error');
+        }
+      } catch(e) { showToast('Error: '+e.message,'error'); }
+    }
 
-function cancelEdit() {
-  selectedKey = null;
-  document.getElementById('editorPlaceholder').style.display = 'flex';
-  document.getElementById('editorForm').style.display = 'none';
-  document.getElementById('editorTitle').textContent = 'Select a memory to edit';
-  clearTimeout(autoSaveTimer);
-  showBadge('');
-  renderList();
-}
+    async function loadAgents() {
+      try {
+        const r = await fetch(`${WORKER}/agents`);
+        const d = await r.json();
+        const agents = d.agents || [];
+        document.getElementById('totalAgents').textContent = agents.length;
+        const list = document.getElementById('agentList');
+        if (!agents.length) { list.innerHTML = '<div class="loading">No agents found</div>'; return; }
+        list.innerHTML = agents.map(a => `
+          <div class="agent-card">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="status-dot status-active"></span>
+              <span class="name">${escHtml(a.agent_id||a.name||'Unknown')}</span>
+            </div>
+            <div class="role">${escHtml(a.role||a.description||'Agent')}</div>
+            <div class="last">Last: ${a.last_action ? new Date(a.last_action).toLocaleString() : 'Never'}</div>
+          </div>`).join('');
+      } catch(e) {
+        document.getElementById('agentList').innerHTML = '<div class="loading" style="color:var(--red)">Error loading agents</div>';
+      }
+    }
 
-function setPriority(n) {
-  currentPriority = n;
-  renderStars();
-  triggerAutoSave();
-}
+    function showToast(msg, type='success') {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast show ' + type;
+      setTimeout(() => { t.className = 'toast'; }, 3000);
+    }
 
-function renderStars() {
-  document.querySelectorAll('.star-btn').forEach(btn => {
-    btn.classList.toggle('active', parseInt(btn.dataset.star) <= currentPriority);
-  });
-}
+    function startCountdown() {
+      clearInterval(countdownTimer);
+      countdown = 15;
+      countdownTimer = setInterval(() => {
+        countdown--;
+        document.getElementById('refreshInfo').textContent = `Refreshes in ${countdown}s`;
+        if (countdown <= 0) {
+          countdown = 15;
+          loadMemories();
+          loadAgents();
+        }
+      }, 1000);
+    }
 
-function togglePin(e, key) {
-  e.stopPropagation();
-  const idx = pinned.indexOf(key);
-  if (idx === -1) pinned.push(key); else pinned.splice(idx, 1);
-  localStorage.setItem('bf_pinned', JSON.stringify(pinned));
-  const m = allMemories.find(x => x.key === key);
-  if (m) m.pinned = pinned.includes(key);
-  filterItems();
-  showToast(pinned.includes(key) ? '\uD83D\uDCCC Pinned: ' + key : 'Unpinned: ' + key, 'info');
-}
-
-function bindAutoSave() {
-  ['fieldKey','fieldValue','fieldCategory','fieldTags'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) { el.removeEventListener('input', triggerAutoSave); el.addEventListener('input', triggerAutoSave); }
-  });
-}
-
-function triggerAutoSave() {
-  clearTimeout(autoSaveTimer);
-  showBadge('saving');
-  autoSaveTimer = setTimeout(() => saveMemory(true), 2000);
-}
-
-function showBadge(state) {
-  document.getElementById('savingBadge').classList.toggle('visible', state === 'saving');
-  document.getElementById('savedBadge').classList.toggle('visible', state === 'saved');
-}
-
-async function saveMemory(auto) {
-  const key = document.getElementById('fieldKey').value.trim();
-  const value = document.getElementById('fieldValue').value.trim();
-  const category = document.getElementById('fieldCategory').value;
-  if (!key || !value) { if (!auto) showToast('Key and Value are required', 'error'); showBadge(''); return; }
-  showBadge('saving');
-  priorities[key] = currentPriority;
-  categories[key] = category;
-  localStorage.setItem('bf_priorities', JSON.stringify(priorities));
-  localStorage.setItem('bf_categories', JSON.stringify(categories));
-  try {
-    const r = await fetch(WORKER + '/memory', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key, value, category, priority: currentPriority })
-    });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    showBadge('saved');
-    setTimeout(() => showBadge(''), 3000);
-    if (!auto) showToast('\u2713 Memory saved: ' + key, 'success');
-    document.getElementById('lastSavedInfo').style.display = 'block';
-    document.getElementById('lastSavedTime').textContent = new Date().toLocaleString();
-    selectedKey = key;
-    document.getElementById('editorTitle').textContent = '\u270F\uFE0F ' + key;
-    document.getElementById('deleteBtn').style.display = 'inline-flex';
-    await fetchMemories();
-    renderList();
-  } catch(e) {
-    showBadge('');
-    showToast('Save failed: ' + e.message, 'error');
-  }
-}
-
-async function deleteMemory() {
-  if (!selectedKey) return;
-  if (!confirm('Delete memory "' + selectedKey + '"? This cannot be undone.')) return;
-  try {
-    await fetch(WORKER + '/memory', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key: selectedKey, value: '__deleted__' })
-    });
-    showToast('Memory deleted: ' + selectedKey, 'info');
-    allMemories = allMemories.filter(m => m.key !== selectedKey);
-    cancelEdit();
-    updateCounts();
-    filterItems();
-  } catch(e) {
-    showToast('Delete failed: ' + e.message, 'error');
-  }
-}
-
-function showToast(msg, type) {
-  const c = document.getElementById('toastContainer');
-  const t = document.createElement('div');
-  t.className = 'toast ' + (type || 'info');
-  const icon = type === 'success' ? '\u2713' : type === 'error' ? '\u2715' : '\u2139';
-  t.innerHTML = '<span>' + icon + '</span><span>' + escHtml(msg) + '</span>';
-  c.appendChild(t);
-  setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateX(100%)'; setTimeout(() => t.remove(), 350); }, 4500);
-}
-
-function showProgress(pct) {
-  const bar = document.getElementById('progressBar');
-  bar.style.width = pct + '%';
-  bar.classList.toggle('active', pct > 0 && pct < 100);
-}
-
-function startCountdown() {
-  clearInterval(countdownTimer);
-  countdownVal = 10;
-  document.getElementById('countdown').textContent = countdownVal;
-  countdownTimer = setInterval(() => {
-    countdownVal--;
-    document.getElementById('countdown').textContent = countdownVal;
-    if (countdownVal <= 0) { countdownVal = 10; fetchMemories(); }
-  }, 1000);
-}
-
-async function init() {
-  await checkHealth();
-  await fetchMemories();
-  startCountdown();
-}
-
-init();
-</script>
+    loadMemories();
+    loadAgents();
+    startCountdown();
+  </script>
 </body>
 </html>
