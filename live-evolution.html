@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Evolution Dashboard — Brainforge AI</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --bg2: #161b22;
+      --bg3: #21262d;
+      --border: #30363d;
+      --text: #e6edf3;
+      --text2: #8b949e;
+      --purple: #7c3aed;
+      --purple-light: #a78bfa;
+      --teal: #3fdbdb;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --blue: #58a6ff;
+      --red: #f85149;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; min-height: 100vh; }
+
+    /* NAV */
+    nav { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0 1.5rem; display: flex; align-items: center; gap: 2rem; height: 56px; position: sticky; top: 0; z-index: 100; }
+    .nav-brand { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 1rem; color: var(--purple-light); text-decoration: none; }
+    .nav-brand svg { width: 22px; height: 22px; }
+    .nav-links { display: flex; gap: 0.25rem; }
+    .nav-link { color: var(--text2); text-decoration: none; padding: 0.4rem 0.8rem; border-radius: 6px; font-size: 0.875rem; transition: all 0.15s; }
+    .nav-link:hover { color: var(--text); background: var(--bg3); }
+    .nav-link.active { color: var(--purple-light); background: rgba(124,58,237,0.15); }
+    @media (max-width: 640px) { .nav-links { gap: 0; } .nav-link { padding: 0.4rem 0.5rem; font-size: 0.75rem; } }
+
+    /* LAYOUT */
+    main { max-width: 1200px; margin: 0 auto; padding: 2rem 1.5rem; }
+    @media (max-width: 640px) { main { padding: 1rem; } }
+
+    /* HEADER ROW */
+    .page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 2rem; }
+    .page-title { font-size: 1.5rem; font-weight: 700; color: var(--text); }
+    .header-right { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    .timestamp { font-size: 0.8rem; color: var(--text2); }
+    .status-indicator { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text2); flex-shrink: 0; }
+    .dot.running { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+    .trigger-btn { background: var(--purple); color: #fff; border: none; padding: 0.45rem 1rem; border-radius: 6px; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 0.4rem; }
+    .trigger-btn:hover:not(:disabled) { background: #6d28d9; }
+    .trigger-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* SECTION HEADERS */
+    .section-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.25rem; }
+    .section-title { font-size: 1rem; font-weight: 600; color: var(--text); }
+    .count-badge { background: var(--bg3); border: 1px solid var(--border); color: var(--text2); font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 99px; }
+
+    /* DIMENSION GRID */
+    .dim-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem; margin-bottom: 2.5rem; }
+    @media (max-width: 480px) { .dim-grid { grid-template-columns: 1fr; } }
+    .dim-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; border-top: 3px solid transparent; transition: border-color 0.2s; }
+    .dim-card[data-dim="auto_improvement"] { border-top-color: var(--green); }
+    .dim-card[data-dim="skill_acquisition"] { border-top-color: var(--purple-light); }
+    .dim-card[data-dim="identity_development"] { border-top-color: var(--teal); }
+    .dim-card[data-dim="thinking_improvement"] { border-top-color: var(--blue); }
+    .dim-card[data-dim="feature_addition"] { border-top-color: #f78166; }
+    .dim-card[data-dim="tool_integration"] { border-top-color: var(--yellow); }
+    .dim-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 0.75rem; }
+    .dim-name { font-weight: 600; font-size: 0.95rem; color: var(--text); }
+    .status-badge { font-size: 0.7rem; font-weight: 600; padding: 0.2rem 0.55rem; border-radius: 99px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .badge-active { background: rgba(63,185,80,0.15); color: var(--green); border: 1px solid rgba(63,185,80,0.3); }
+    .badge-needs_work { background: rgba(210,153,34,0.15); color: var(--yellow); border: 1px solid rgba(210,153,34,0.3); }
+    .badge-evolving { background: rgba(88,166,255,0.15); color: var(--blue); border: 1px solid rgba(88,166,255,0.3); }
+    .dim-meta { display: flex; gap: 1.25rem; margin-bottom: 0.75rem; font-size: 0.8rem; color: var(--text2); }
+    .dim-meta span strong { color: var(--text); }
+    .progress-bar { background: var(--bg3); border-radius: 99px; height: 6px; overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: 99px; background: var(--purple); transition: width 0.5s ease; }
+    .dim-card[data-dim="auto_improvement"] .progress-fill { background: var(--green); }
+    .dim-card[data-dim="skill_acquisition"] .progress-fill { background: var(--purple-light); }
+    .dim-card[data-dim="identity_development"] .progress-fill { background: var(--teal); }
+    .dim-card[data-dim="thinking_improvement"] .progress-fill { background: var(--blue); }
+    .dim-card[data-dim="feature_addition"] .progress-fill { background: #f78166; }
+    .dim-card[data-dim="tool_integration"] .progress-fill { background: var(--yellow); }
+
+    /* TABLE */
+    .table-section { margin-bottom: 2.5rem; }
+    .table-wrap { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    thead { background: var(--bg3); }
+    th { padding: 0.75rem 1rem; text-align: left; font-weight: 600; color: var(--text2); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border); }
+    tbody { display: block; max-height: 340px; overflow-y: auto; }
+    thead tr, tbody tr { display: table; width: 100%; table-layout: fixed; }
+    td { padding: 0.7rem 1rem; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: top; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: var(--bg3); }
+    .td-time { color: var(--text2); font-size: 0.78rem; width: 150px; white-space: nowrap; }
+    .td-dim { width: 160px; }
+    .td-action { width: 200px; }
+    .td-result { color: var(--text2); word-break: break-word; }
+    .empty-row td { text-align: center; color: var(--text2); padding: 2rem; }
+    @media (max-width: 640px) { .td-result { display: none; } .td-time { width: 110px; } }
+
+    /* CONFLICTS */
+    .conflicts-section { margin-bottom: 2.5rem; }
+    .conflict-cards { display: flex; flex-direction: column; gap: 0.75rem; }
+    .conflict-card { background: var(--bg2); border: 1px solid var(--border); border-left: 3px solid var(--red); border-radius: 8px; padding: 1rem 1.25rem; }
+    .conflict-key { font-weight: 600; font-size: 0.9rem; color: var(--text); margin-bottom: 0.5rem; }
+    .conflict-vals { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.5rem; }
+    @media (max-width: 480px) { .conflict-vals { grid-template-columns: 1fr; } }
+    .conflict-val-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text2); margin-bottom: 0.25rem; }
+    .conflict-val-text { font-size: 0.82rem; color: var(--text); background: var(--bg3); border-radius: 4px; padding: 0.4rem 0.6rem; word-break: break-all; }
+    .conflict-footer { display: flex; gap: 1.5rem; font-size: 0.78rem; color: var(--text2); }
+    .empty-state { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 2rem; text-align: center; color: var(--text2); }
+    .empty-state svg { margin: 0 auto 0.75rem; display: block; opacity: 0.4; }
+
+    /* LOADING SKELETON */
+    .skeleton { background: linear-gradient(90deg, var(--bg3) 0%, var(--bg2) 50%, var(--bg3) 100%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 4px; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    /* SCROLLBAR */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a href="index.html" class="nav-brand">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+    </svg>
+    Brainforge AI
+  </a>
+  <div class="nav-links">
+    <a href="index.html" class="nav-link">Dashboard</a>
+    <a href="brain-knowledge.html" class="nav-link">Knowledge</a>
+    <a href="live-evolution.html" class="nav-link active">Evolution</a>
+    <a href="live-log.html" class="nav-link">Live Log</a>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<main>
+  <!-- PAGE HEADER -->
+  <div class="page-header">
+    <h1 class="page-title">Evolution Dashboard</h1>
+    <div class="header-right">
+      <span class="timestamp" id="last-updated">Loading...</span>
+      <div class="status-indicator">
+        <span class="dot" id="status-dot"></span>
+        <span id="status-text">Idle</span>
+      </div>
+      <button class="trigger-btn" id="trigger-btn" onclick="triggerEvolve()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="5 3 19 12 5 21 5 3"/>
+        </svg>
+        Trigger Evolution
+      </button>
+    </div>
+  </div>
+
+  <!-- DIMENSIONS GRID -->
+  <div class="section-header">
+    <span class="section-title">6 Evolution Dimensions</span>
+    <span class="count-badge" id="active-count">—</span>
+  </div>
+  <div class="dim-grid" id="dim-grid"><!-- JS renders --></div>
+
+  <!-- EVOLUTION LOG -->
+  <div class="table-section">
+    <div class="section-header">
+      <span class="section-title">Evolution Log</span>
+      <span class="count-badge" id="event-count">—</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="td-time">Time</th>
+            <th class="td-dim">Dimension</th>
+            <th class="td-action">Action</th>
+            <th class="td-result">Result</th>
+          </tr>
+        </thead>
+        <tbody id="events-tbody"><!-- JS renders --></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- CONFLICTS PANEL -->
+  <div class="conflicts-section">
+    <div class="section-header">
+      <span class="section-title">Memory Conflicts</span>
+      <span class="count-badge" id="conflict-count">—</span>
+    </div>
+    <div id="conflicts-container"></div>
+  </div>
+</main>
+
+<script>
+const WORKER = 'https://caffeine-brain-worker.richard-brown-miami.workers.dev';
+
+const DIM_LABELS = {
+  auto_improvement: 'Auto Improvement',
+  skill_acquisition: 'Skill Acquisition',
+  identity_development: 'Identity Development',
+  thinking_improvement: 'Thinking Improvement',
+  feature_addition: 'Feature Addition',
+  tool_integration: 'Tool Integration'
+};
+
+const DIM_ORDER = Object.keys(DIM_LABELS);
+
+async function fetchJSON(path) {
+  try {
+    const r = await fetch(WORKER + path);
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { return null; }
+}
+
+function fmtTime(ts) {
+  if (!ts) return 'Never';
+  try {
+    const d = new Date(ts);
+    return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  } catch { return String(ts).slice(0, 16); }
+}
+
+function statusBadge(s) {
+  const cls = s === 'active' ? 'badge-active' : s === 'evolving' ? 'badge-evolving' : 'badge-needs_work';
+  const label = s === 'needs_work' ? 'Needs Work' : s === 'active' ? 'Active' : 'Evolving';
+  return '<span class="status-badge ' + cls + '">' + label + '</span>';
+}
+
+function renderDimensions(data) {
+  const grid = document.getElementById('dim-grid');
+  if (!data) { grid.innerHTML = '<p style="color:var(--text2);grid-column:1/-1">Failed to load dimension status.</p>'; return; }
+  // data might have dimensions key or be the flat object
+  const dims = data.dimensions || data;
+  let activeCount = 0;
+  grid.innerHTML = DIM_ORDER.map(key => {
+    const d = dims[key] || {};
+    const status = d.status || 'needs_work';
+    if (status === 'active') activeCount++;
+    const tasks = d.tasks_completed || 0;
+    const pct = Math.min(100, Math.round((tasks / 10) * 100));
+    const lastRun = fmtTime(d.last_run);
+    return '<div class="dim-card" data-dim="' + key + '">' +
+      '<div class="dim-top"><span class="dim-name">' + DIM_LABELS[key] + '</span>' + statusBadge(status) + '</div>' +
+      '<div class="dim-meta"><span>Tasks: <strong>' + tasks + '</strong></span><span>Last run: <strong>' + lastRun + '</strong></span></div>' +
+      '<div class="progress-bar"><div class="progress-fill" style="width:' + pct + '%"></div></div>' +
+      '</div>';
+  }).join('');
+  document.getElementById('active-count').textContent = activeCount + ' active';
+}
+
+function renderEvents(data) {
+  const tbody = document.getElementById('events-tbody');
+  if (!data) { tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Failed to load events.</td></tr>'; return; }
+  const events = (Array.isArray(data) ? data : (data.events || [])).filter(e => {
+    const t = (e.type || '').toLowerCase();
+    const a = (e.agent || '').toLowerCase();
+    return t.includes('evolv') || a.includes('brain');
+  }).slice(0, 20).reverse();
+  document.getElementById('event-count').textContent = events.length + ' events';
+  if (!events.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No evolution events yet. Trigger a cycle above.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = events.map(e => {
+    const dim = e.dimension || e.data?.dimension || '—';
+    const dimLabel = DIM_LABELS[dim] || dim;
+    const action = e.action || e.type || e.message || '—';
+    const result = e.result || e.data?.result || e.content || '—';
+    return '<tr><td class="td-time">' + fmtTime(e.timestamp || e.created_at) + '</td>' +
+      '<td class="td-dim">' + dimLabel + '</td>' +
+      '<td class="td-action">' + String(action).slice(0, 60) + '</td>' +
+      '<td class="td-result">' + String(result).slice(0, 120) + '</td></tr>';
+  }).join('');
+}
+
+function renderConflicts(data) {
+  const container = document.getElementById('conflicts-container');
+  const conflicts = data?.conflicts || (Array.isArray(data) ? data : []);
+  document.getElementById('conflict-count').textContent = conflicts.length + ' found';
+  if (!conflicts.length) {
+    container.innerHTML = '<div class="empty-state"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>No memory conflicts detected</div>';
+    return;
+  }
+  container.innerHTML = '<div class="conflict-cards">' + conflicts.map(c => {
+    const oldVal = String(c.old_value || c.existing_value || '—').slice(0, 120);
+    const newVal = String(c.new_value || c.proposed_value || '—').slice(0, 120);
+    return '<div class="conflict-card">' +
+      '<div class="conflict-key">' + (c.key || c.memory_key || 'Unknown key') + '</div>' +
+      '<div class="conflict-vals">' +
+        '<div><div class="conflict-val-label">Existing value</div><div class="conflict-val-text">' + oldVal + '</div></div>' +
+        '<div><div class="conflict-val-label">Proposed value</div><div class="conflict-val-text">' + newVal + '</div></div>' +
+      '</div>' +
+      '<div class="conflict-footer"><span>Confidence: ' + (c.confidence || '—') + '</span><span>' + fmtTime(c.timestamp || c.created_at) + '</span></div>' +
+      '</div>';
+  }).join('') + '</div>';
+}
+
+async function refreshAll() {
+  const [dims, events, conflicts] = await Promise.all([
+    fetchJSON('/evolve/status'),
+    fetchJSON('/events'),
+    fetchJSON('/conflicts')
+  ]);
+  renderDimensions(dims);
+  renderEvents(events);
+  renderConflicts(conflicts);
+  document.getElementById('last-updated').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+}
+
+async function triggerEvolve() {
+  const btn = document.getElementById('trigger-btn');
+  const dot = document.getElementById('status-dot');
+  const statusText = document.getElementById('status-text');
+  btn.disabled = true;
+  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Running...';
+  dot.classList.add('running');
+  statusText.textContent = 'Running';
+  try {
+    await fetch(WORKER + '/evolve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+  } catch(e) { console.warn('evolve error', e); }
+  await refreshAll();
+  btn.disabled = false;
+  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> Trigger Evolution';
+  dot.classList.remove('running');
+  statusText.textContent = 'Idle';
+}
+
+// Boot: load data then auto-trigger
+refreshAll().then(() => triggerEvolve());
+
+// 10s auto-refresh
+setInterval(refreshAll, 10000);
+</script>
+</body>
+</html>
