@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Brainforge — Live Log</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --bg2: #111118;
+      --bg3: #1a1a24;
+      --border: #2a2a3a;
+      --accent: #6c63ff;
+      --accent2: #a78bfa;
+      --green: #22c55e;
+      --yellow: #eab308;
+      --red: #ef4444;
+      --blue: #3b82f6;
+      --cyan: #06b6d4;
+      --orange: #f97316;
+      --text: #e2e8f0;
+      --text2: #94a3b8;
+      --text3: #64748b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+    nav { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; position: sticky; top: 0; z-index: 100; }
+    nav .brand { font-weight: 700; font-size: 1.1rem; color: var(--accent2); flex: 1; }
+    nav a { color: var(--text2); text-decoration: none; font-size: 0.875rem; padding: 6px 12px; border-radius: 6px; transition: all 0.2s; }
+    nav a:hover, nav a.active { background: var(--bg3); color: var(--accent2); }
+    .container { max-width: 1200px; margin: 0 auto; padding: 24px 16px; flex: 1; display: flex; flex-direction: column; width: 100%; }
+    .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; }
+    .header h1 { font-size: 1.5rem; font-weight: 700; }
+    .header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .badge-live { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+    .badge-live::before { content: ''; width: 6px; height: 6px; background: var(--green); border-radius: 50%; animation: pulse 1.5s ease-in-out infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .stats-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+    .stat { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; display: flex; flex-direction: column; }
+    .stat .label { font-size: 0.7rem; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat .val { font-size: 1.2rem; font-weight: 700; color: var(--accent2); }
+    .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+    .controls input { flex: 1; min-width: 180px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 8px; font-size: 0.875rem; outline: none; }
+    .controls input:focus { border-color: var(--accent); }
+    .btn { padding: 8px 16px; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--bg2); color: var(--text2); transition: all 0.2s; }
+    .btn:hover { background: var(--bg3); color: var(--text); }
+    .btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+    .filter-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .filter-chip { padding: 4px 12px; border-radius: 20px; font-size: 0.72rem; cursor: pointer; border: 1px solid var(--border); background: var(--bg2); color: var(--text3); transition: all 0.2s; user-select: none; }
+    .filter-chip.active { background: rgba(108,99,255,0.2); color: var(--accent2); border-color: var(--accent); }
+    .filter-chip[data-type="chat"].active { background: rgba(59,130,246,0.2); color: var(--blue); border-color: var(--blue); }
+    .filter-chip[data-type="evolution"].active { background: rgba(167,139,250,0.2); color: var(--accent2); border-color: var(--accent2); }
+    .filter-chip[data-type="memory"].active { background: rgba(34,197,94,0.2); color: var(--green); border-color: var(--green); }
+    .filter-chip[data-type="agent"].active { background: rgba(234,179,8,0.2); color: var(--yellow); border-color: var(--yellow); }
+    .filter-chip[data-type="error"].active { background: rgba(239,68,68,0.2); color: var(--red); border-color: var(--red); }
+    .terminal { background: #050508; border: 1px solid var(--border); border-radius: 12px; font-family: 'Courier New', Consolas, monospace; font-size: 0.8rem; flex: 1; overflow-y: auto; padding: 16px; max-height: 60vh; min-height: 300px; scroll-behavior: smooth; }
+    .log-entry { display: grid; grid-template-columns: 140px 90px 90px 1fr; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(42,42,58,0.5); align-items: start; }
+    .log-entry:last-child { border-bottom: none; }
+    .log-entry .ts { color: var(--text3); font-size: 0.72rem; }
+    .log-entry .type-badge { padding: 1px 6px; border-radius: 4px; font-size: 0.68rem; font-weight: 700; text-align: center; text-transform: uppercase; }
+    .type-chat { background: rgba(59,130,246,0.15); color: var(--blue); }
+    .type-evolution { background: rgba(167,139,250,0.15); color: var(--accent2); }
+    .type-memory { background: rgba(34,197,94,0.15); color: var(--green); }
+    .type-agent { background: rgba(234,179,8,0.15); color: var(--yellow); }
+    .type-error { background: rgba(239,68,68,0.15); color: var(--red); }
+    .type-system { background: rgba(6,182,212,0.15); color: var(--cyan); }
+    .type-default { background: rgba(100,116,139,0.15); color: var(--text3); }
+    .log-entry .agent { color: var(--text3); font-size: 0.72rem; truncate: clip; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .log-entry .msg { color: var(--text2); word-break: break-word; }
+    .log-entry .msg.error { color: var(--red); }
+    .terminal-header { display: flex; gap: 6px; padding: 8px 12px; background: var(--bg2); border: 1px solid var(--border); border-bottom: none; border-radius: 12px 12px 0 0; align-items: center; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .auto-scroll-toggle { display: flex; align-items: center; gap: 6px; margin-left: auto; font-size: 0.75rem; color: var(--text3); cursor: pointer; user-select: none; }
+    .auto-scroll-toggle input { cursor: pointer; }
+    .empty { color: var(--text3); padding: 40px; text-align: center; }
+    .refresh-info { font-size: 0.72rem; color: var(--text3); }
+    @media (max-width: 600px) { .log-entry { grid-template-columns: 80px 70px 1fr; } .log-entry .agent { display: none; } }
+    ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: var(--bg); } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <nav>
+    <div class="brand">🧠 Brainforge</div>
+    <a href="index.html">Dashboard</a>
+    <a href="live-knowledge.html">Knowledge</a>
+    <a href="live-evolution.html">Evolution</a>
+    <a href="live-log.html" class="active">Live Log</a>
+  </nav>
+  <div class="container">
+    <div class="header">
+      <h1>📡 Live Event Log</h1>
+      <div class="header-right">
+        <span class="badge-live">LIVE</span>
+        <span class="refresh-info" id="refreshInfo">Refreshes in 5s</span>
+      </div>
+    </div>
+    <div class="stats-row">
+      <div class="stat"><span class="label">Total Events</span><span class="val" id="totalEvents">—</span></div>
+      <div class="stat"><span class="label">Events/Hour</span><span class="val" id="eventsPerHour">—</span></div>
+      <div class="stat"><span class="label">Last Event</span><span class="val" style="font-size:0.85rem" id="lastEvent">—</span></div>
+      <div class="stat"><span class="label">Showing</span><span class="val" id="showing">—</span></div>
+    </div>
+    <div class="controls">
+      <input type="text" id="searchBox" placeholder="Search events..." oninput="applyFilters()">
+      <button class="btn" onclick="clearFilters()">Clear</button>
+      <button class="btn" onclick="loadEvents()">↻ Refresh</button>
+    </div>
+    <div class="filter-row">
+      <div class="filter-chip active" data-type="all" onclick="toggleFilter(this)">All</div>
+      <div class="filter-chip" data-type="chat" onclick="toggleFilter(this)">Chat</div>
+      <div class="filter-chip" data-type="evolution" onclick="toggleFilter(this)">Evolution</div>
+      <div class="filter-chip" data-type="memory" onclick="toggleFilter(this)">Memory</div>
+      <div class="filter-chip" data-type="agent" onclick="toggleFilter(this)">Agent</div>
+      <div class="filter-chip" data-type="error" onclick="toggleFilter(this)">Error</div>
+    </div>
+    <div class="terminal-header">
+      <div class="dot" style="background:#ef4444"></div>
+      <div class="dot" style="background:#eab308"></div>
+      <div class="dot" style="background:#22c55e"></div>
+      <span style="margin-left:8px;font-size:0.75rem;color:var(--text3);font-family:monospace">brainforge-events &mdash; v3.6</span>
+      <label class="auto-scroll-toggle">
+        <input type="checkbox" id="autoScroll" checked> Auto-scroll
+      </label>
+    </div>
+    <div class="terminal" id="terminal"><div class="empty">Loading events...</div></div>
+  </div>
+
+  <script>
+    const WORKER = 'https://caffeine-brain-worker.richard-brown-miami.workers.dev';
+    let allEvents = [];
+    let activeFilter = 'all';
+    let countdown = 5;
+    let countdownTimer;
+
+    function getTypeClass(type) {
+      if (!type) return 'type-default';
+      const t = type.toLowerCase();
+      if (t.includes('chat') || t.includes('message')) return 'type-chat';
+      if (t.includes('evol')) return 'type-evolution';
+      if (t.includes('mem') || t.includes('save') || t.includes('store')) return 'type-memory';
+      if (t.includes('agent') || t.includes('spawn')) return 'type-agent';
+      if (t.includes('error') || t.includes('fail')) return 'type-error';
+      if (t.includes('system') || t.includes('health') || t.includes('init')) return 'type-system';
+      return 'type-default';
+    }
+
+    function getDisplayType(type) {
+      if (!type) return 'event';
+      return String(type).toLowerCase().slice(0, 10);
+    }
+
+    function categorize(event) {
+      const t = (event.type || event.event_type || '').toLowerCase();
+      const m = (event.message || event.action || '').toLowerCase();
+      if (t.includes('chat') || m.includes('chat') || m.includes('message')) return 'chat';
+      if (t.includes('evol') || m.includes('evol')) return 'evolution';
+      if (t.includes('mem') || m.includes('mem') || m.includes('save')) return 'memory';
+      if (t.includes('agent') || m.includes('agent')) return 'agent';
+      if (t.includes('error') || m.includes('error') || m.includes('fail')) return 'error';
+      return 'other';
+    }
+
+    async function loadEvents() {
+      try {
+        const r = await fetch(`${WORKER}/events`);
+        const d = await r.json();
+        allEvents = (d.events || []).sort((a,b) => new Date(b.timestamp||b.created_at) - new Date(a.timestamp||a.created_at));
+        updateStats();
+        applyFilters();
+      } catch(e) {
+        document.getElementById('terminal').innerHTML = `<div class="empty" style="color:var(--red)">Error loading events: ${e.message}</div>`;
+      }
+    }
+
+    function updateStats() {
+      document.getElementById('totalEvents').textContent = allEvents.length;
+      if (allEvents.length > 0) {
+        const last = allEvents[0];
+        document.getElementById('lastEvent').textContent = new Date(last.timestamp||last.created_at).toLocaleTimeString();
+        // Events per hour: count events in last 60 mins
+        const oneHourAgo = Date.now() - 3600000;
+        const recent = allEvents.filter(e => new Date(e.timestamp||e.created_at).getTime() > oneHourAgo);
+        document.getElementById('eventsPerHour').textContent = recent.length;
+      } else {
+        document.getElementById('lastEvent').textContent = 'None';
+        document.getElementById('eventsPerHour').textContent = '0';
+      }
+    }
+
+    function applyFilters() {
+      const search = document.getElementById('searchBox').value.toLowerCase();
+      let filtered = allEvents.filter(e => {
+        const cat = categorize(e);
+        const matchFilter = activeFilter === 'all' || cat === activeFilter;
+        if (!matchFilter) return false;
+        if (!search) return true;
+        const text = [e.type, e.event_type, e.message, e.action, e.agent, e.data].filter(Boolean).join(' ').toLowerCase();
+        return text.includes(search);
+      });
+      document.getElementById('showing').textContent = `${filtered.length}/${allEvents.length}`;
+      renderTerminal(filtered);
+    }
+
+    function renderTerminal(events) {
+      const term = document.getElementById('terminal');
+      if (!events.length) {
+        term.innerHTML = '<div class="empty">No events match the current filter</div>';
+        return;
+      }
+      term.innerHTML = events.map(e => {
+        const ts = new Date(e.timestamp||e.created_at);
+        const type = e.type || e.event_type || 'event';
+        const msg = String(e.message || e.action || e.data || JSON.stringify(e)).slice(0, 200);
+        const agent = String(e.agent || e.agent_id || '—').slice(0, 15);
+        const isErr = type.toLowerCase().includes('error') || msg.toLowerCase().includes('error');
+        return `
+          <div class="log-entry">
+            <span class="ts">${ts.toLocaleDateString()} ${ts.toLocaleTimeString()}</span>
+            <span class="type-badge ${getTypeClass(type)}">${getDisplayType(type)}</span>
+            <span class="agent">${escHtml(agent)}</span>
+            <span class="msg${isErr?' error':''}">${escHtml(msg)}</span>
+          </div>`;
+      }).join('');
+      if (document.getElementById('autoScroll').checked) {
+        term.scrollTop = 0; // newest first
+      }
+    }
+
+    function toggleFilter(el) {
+      document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+      el.classList.add('active');
+      activeFilter = el.dataset.type;
+      applyFilters();
+    }
+
+    function clearFilters() {
+      document.getElementById('searchBox').value = '';
+      document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+      document.querySelector('.filter-chip[data-type="all"]').classList.add('active');
+      activeFilter = 'all';
+      applyFilters();
+    }
+
+    function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    function startCountdown() {
+      clearInterval(countdownTimer);
+      countdown = 5;
+      countdownTimer = setInterval(() => {
+        countdown--;
+        document.getElementById('refreshInfo').textContent = `Refreshes in ${countdown}s`;
+        if (countdown <= 0) {
+          countdown = 5;
+          loadEvents();
+        }
+      }, 1000);
+    }
+
+    loadEvents();
+    startCountdown();
+  </script>
+</body>
+</html>
