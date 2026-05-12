@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0d1117">
+  <title>Brainforge AI — Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d1117; --bg2: #161b22; --bg3: #21262d;
+      --border: #30363d; --accent: #58a6ff; --teal: #3fdbdb;
+      --green: #3fb950; --red: #f85149; --yellow: #d29922;
+      --text: #e6edf3; --muted: #8b949e; --radius: 8px;
+    }
+    html,body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;min-height:100vh;}
+    nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-items:center;height:56px;position:sticky;top:0;z-index:100;}
+    .nav-logo{font-size:18px;font-weight:700;color:var(--teal);text-decoration:none;display:flex;align-items:center;gap:8px;white-space:nowrap;}
+    .nav-links{display:flex;gap:4px;margin-left:32px;flex:1;}
+    .nav-links a{color:var(--muted);text-decoration:none;padding:6px 12px;border-radius:var(--radius);font-size:13px;transition:color .15s,background .15s;}
+    .nav-links a:hover{color:var(--text);background:var(--bg3);}
+    .nav-links a.active{color:var(--accent);background:rgba(88,166,255,.1);}
+    .hamburger{display:none;background:none;border:none;cursor:pointer;color:var(--text);font-size:22px;margin-left:auto;padding:4px 8px;}
+    .mobile-menu{display:none;position:fixed;top:56px;left:0;right:0;background:var(--bg2);border-bottom:1px solid var(--border);z-index:99;padding:12px 20px;flex-direction:column;gap:4px;}
+    .mobile-menu.open{display:flex;}
+    .mobile-menu a{color:var(--muted);text-decoration:none;padding:10px 12px;border-radius:var(--radius);font-size:14px;}
+    .mobile-menu a.active{color:var(--accent);}
+    .container{max-width:1200px;margin:0 auto;padding:24px 20px;}
+    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+    .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
+    .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+    @media(max-width:900px){.grid-4{grid-template-columns:repeat(2,1fr);}.grid-2{grid-template-columns:1fr;}.grid-3{grid-template-columns:1fr 1fr;}}
+    @media(max-width:600px){.grid-3{grid-template-columns:1fr;}.hamburger{display:block;}.nav-links{display:none;}.container{padding:16px 12px;}}
+    .card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;}
+    .card-title{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:16px;display:flex;align-items:center;gap:8px;}
+    .badge{font-size:11px;padding:3px 10px;border-radius:20px;font-weight:600;}
+    .badge-green{background:rgba(63,185,80,.15);color:var(--green);border:1px solid rgba(63,185,80,.3);}
+    .badge-red{background:rgba(248,81,73,.15);color:var(--red);border:1px solid rgba(248,81,73,.3);}
+    .badge-yellow{background:rgba(210,153,34,.15);color:var(--yellow);border:1px solid rgba(210,153,34,.3);}
+    .status-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+    @media(max-width:700px){.status-grid{grid-template-columns:repeat(2,1fr);}}
+    .status-item{text-align:center;}
+    .status-item .val{font-size:22px;font-weight:700;color:var(--teal);display:block;}
+    .status-item .lbl{font-size:11px;color:var(--muted);margin-top:4px;display:flex;align-items:center;justify-content:center;gap:5px;}
+    .status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);}
+    .status-dot.online{background:var(--green);box-shadow:0 0 6px var(--green);}
+    .status-dot.offline{background:var(--red);}
+    .chat-container{display:flex;flex-direction:column;height:430px;}
+    .chat-messages{flex:1;overflow-y:auto;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;scroll-behavior:smooth;}
+    .chat-messages::-webkit-scrollbar{width:4px;}
+    .chat-messages::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+    .msg{margin-bottom:12px;display:flex;flex-direction:column;}
+    .msg.user{align-items:flex-end;}
+    .msg.ai{align-items:flex-start;}
+    .msg-bubble{max-width:82%;padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.55;word-break:break-word;}
+    .msg.user .msg-bubble{background:var(--accent);color:#0d1117;border-radius:12px 12px 2px 12px;}
+    .msg.ai .msg-bubble{background:var(--bg3);border:1px solid rgba(63,219,219,.3);color:var(--text);border-radius:12px 12px 12px 2px;}
+    .msg-meta{font-size:10px;color:var(--muted);margin-top:4px;display:flex;align-items:center;gap:8px;}
+    .save-btn{background:none;border:1px solid var(--border);color:var(--muted);cursor:pointer;padding:2px 8px;border-radius:4px;font-size:10px;transition:all .15s;}
+    .save-btn:hover{border-color:var(--teal);color:var(--teal);}
+    .save-btn.saved{border-color:var(--green);color:var(--green);}
+    .typing-indicator{display:none;align-items:center;gap:4px;padding:6px 12px;color:var(--muted);font-size:12px;font-style:italic;}
+    .typing-indicator.show{display:flex;}
+    .typing-dot{width:6px;height:6px;border-radius:50%;background:var(--teal);animation:blink 1.2s infinite;}
+    .typing-dot:nth-child(2){animation-delay:.2s;}
+    .typing-dot:nth-child(3){animation-delay:.4s;}
+    @keyframes blink{0%,80%,100%{opacity:.2;}40%{opacity:1;}}
+    .chat-input-row{display:flex;gap:8px;}
+    .chat-input{flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:10px 14px;font-size:13px;outline:none;transition:border-color .15s;}
+    .chat-input:focus{border-color:var(--accent);}
+    .chat-input::placeholder{color:var(--muted);}
+    .btn{background:var(--accent);color:#0d1117;border:none;border-radius:var(--radius);padding:10px 18px;font-weight:600;font-size:13px;cursor:pointer;transition:opacity .15s;}
+    .btn:hover{opacity:.85;}
+    .btn:disabled{opacity:.4;cursor:not-allowed;}
+    .stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;text-align:center;}
+    .stat-card .icon{font-size:26px;margin-bottom:8px;}
+    .stat-card .num{font-size:30px;font-weight:700;color:var(--accent);display:block;}
+    .stat-card .label{font-size:12px;color:var(--muted);margin-top:4px;}
+    .event-item{padding:10px 0;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:10px;}
+    .event-item:last-child{border-bottom:none;}
+    .event-icon{width:28px;height:28px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;border:1px solid var(--border);}
+    .event-body{flex:1;min-width:0;}
+    .event-type{font-size:12px;font-weight:600;color:var(--teal);}
+    .event-action{font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .event-time{font-size:10px;color:var(--muted);white-space:nowrap;}
+    .link-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;text-decoration:none;color:var(--text);transition:border-color .15s,transform .15s;display:block;}
+    .link-card:hover{border-color:var(--accent);transform:translateY(-2px);}
+    .link-card .lc-icon{font-size:28px;margin-bottom:10px;}
+    .link-card .lc-title{font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px;}
+    .link-card .lc-desc{font-size:12px;color:var(--muted);line-height:1.5;}
+    .evo-pills{display:flex;flex-wrap:wrap;gap:8px;}
+    .evo-pill{padding:6px 14px;border-radius:20px;font-size:12px;font-weight:500;border:1px solid var(--border);background:var(--bg3);color:var(--muted);}
+    .evo-pill.active{background:rgba(63,219,219,.12);color:var(--teal);border-color:rgba(63,219,219,.35);}
+    .evo-pill.needs{background:rgba(210,153,34,.12);color:var(--yellow);border-color:rgba(210,153,34,.35);}
+    .section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+    .section-title{font-size:16px;font-weight:600;color:var(--text);}
+    .view-all{font-size:12px;color:var(--accent);text-decoration:none;}
+    .view-all:hover{text-decoration:underline;}
+    .spacer{height:24px;}
+    .small-muted{font-size:11px;color:var(--muted);}
+    .refresh-bar{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);padding:10px 20px;border-bottom:1px solid var(--border);background:var(--bg);}
+    .refresh-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;}
+    @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+    footer{text-align:center;padding:32px 20px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);margin-top:40px;}
+    footer a{color:var(--accent);text-decoration:none;}
+    footer a:hover{text-decoration:underline;}
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="nav-logo">&#129504; Brainforge AI</a>
+  <div class="nav-links">
+    <a href="index.html" class="active">Dashboard</a>
+    <a href="live-knowledge.html">Knowledge</a>
+    <a href="live-evolution.html">Evolution</a>
+    <a href="live-log.html">Live Log</a>
+  </div>
+  <button class="hamburger" id="hamburgerBtn" aria-label="Menu">&#9776;</button>
+</nav>
+
+<div class="mobile-menu" id="mobileMenu">
+  <a href="index.html" class="active">Dashboard</a>
+  <a href="live-knowledge.html">Knowledge</a>
+  <a href="live-evolution.html">Evolution</a>
+  <a href="live-log.html">Live Log</a>
+</div>
+
+<div class="refresh-bar">
+  <div class="refresh-dot"></div>
+  <span>Auto-refreshing every 10s &nbsp;|&nbsp; Last updated: <span id="lastUpdated">&mdash;</span></span>
+</div>
+
+<div class="container">
+
+  <!-- SYSTEM STATUS -->
+  <div class="section-header">
+    <div class="section-title">System Status</div>
+    <span id="systemBadge" class="badge badge-yellow">Checking...</span>
+  </div>
+  <div class="card" style="margin-bottom:24px;">
+    <div class="status-grid">
+      <div class="status-item">
+        <span class="val" id="workerVersion">&mdash;</span>
+        <div class="lbl"><span class="status-dot" id="versionDot"></span>Worker Version</div>
+      </div>
+      <div class="status-item">
+        <span class="val" id="d1Status">&mdash;</span>
+        <div class="lbl"><span class="status-dot" id="d1Dot"></span>D1 Database</div>
+      </div>
+      <div class="status-item">
+        <span class="val" id="uptimeVal">&mdash;</span>
+        <div class="lbl"><span class="status-dot" id="uptimeDot"></span>Uptime</div>
+      </div>
+      <div class="status-item">
+        <span class="val" id="endpointCount">&mdash;</span>
+        <div class="lbl"><span class="status-dot" id="epDot"></span>Endpoints</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CHAT + EVENTS -->
+  <div class="grid-2" style="margin-bottom:24px;">
+    <div class="card">
+      <div class="card-title">&#128172; Chat with Brainforge AI</div>
+      <div class="chat-container">
+        <div class="chat-messages" id="chatMessages">
+          <div class="msg ai">
+            <div class="msg-bubble">Hello! I&#39;m Brainforge AI &mdash; a stateful, self-evolving intelligence. I remember our conversations, learn continuously, and pursue 6 active evolution dimensions. How can I help you?</div>
+            <div class="msg-meta">Brainforge AI &bull; ready</div>
+          </div>
+        </div>
+        <div class="typing-indicator" id="typingIndicator">
+          <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
+          <span style="margin-left:6px;">Brainforge is thinking...</span>
+        </div>
+        <div class="chat-input-row">
+          <input class="chat-input" id="chatInput" type="text" placeholder="Ask anything..." autocomplete="off">
+          <button class="btn" id="sendBtn" onclick="sendMessage()">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-header">
+        <div class="card-title" style="margin-bottom:0;">&#9889; Recent Events</div>
+        <a href="live-log.html" class="view-all">View All &#8594;</a>
+      </div>
+      <div id="eventsList"><div class="small-muted" style="padding:20px 0;text-align:center;">Loading events...</div></div>
+    </div>
+  </div>
+
+  <!-- QUICK STATS -->
+  <div class="section-header"><div class="section-title">Quick Stats</div></div>
+  <div class="grid-4" style="margin-bottom:24px;">
+    <div class="stat-card"><div class="icon">&#129504;</div><span class="num" id="memCount">&mdash;</span><div class="label">Total Memories</div></div>
+    <div class="stat-card"><div class="icon">&#9889;</div><span class="num" id="eventsCount">&mdash;</span><div class="label">Active Events</div></div>
+    <div class="stat-card"><div class="icon">&#128260;</div><span class="num" id="cyclesCount">&mdash;</span><div class="label">Evolution Cycles</div></div>
+    <div class="stat-card"><div class="icon">&#9888;&#65039;</div><span class="num" id="conflictsCount">&mdash;</span><div class="label">Conflicts Pending</div></div>
+  </div>
+
+  <!-- EVOLUTION PILLS -->
+  <div class="card" style="margin-bottom:24px;">
+    <div class="section-header">
+      <div class="card-title" style="margin-bottom:0;">&#129516; Evolution Dimensions</div>
+      <a href="live-evolution.html" class="view-all">View Details &#8594;</a>
+    </div>
+    <div class="evo-pills" id="evoPills"><span class="evo-pill">Loading...</span></div>
+  </div>
+
+  <!-- QUICK LINKS -->
+  <div class="section-header"><div class="section-title">Features</div></div>
+  <div class="grid-3" style="margin-bottom:24px;">
+    <a href="live-knowledge.html" class="link-card">
+      <div class="lc-icon">&#128218;</div>
+      <div class="lc-title">Knowledge Manager</div>
+      <div class="lc-desc">Browse, edit, and organize Brainforge&#39;s stored memories, skills, and learning notes with full-text search and auto-save.</div>
+    </a>
+    <a href="live-evolution.html" class="link-card">
+      <div class="lc-icon">&#129516;</div>
+      <div class="lc-title">Evolution Dashboard</div>
+      <div class="lc-desc">Track all 6 self-evolution dimensions, view cycle history, and manually trigger autonomous improvement cycles.</div>
+    </a>
+    <a href="live-log.html" class="link-card">
+      <div class="lc-icon">&#128225;</div>
+      <div class="lc-title">Live Log</div>
+      <div class="lc-desc">Real-time activity stream showing every action, event, and decision Brainforge AI makes &mdash; with 10s auto-refresh.</div>
+    </a>
+  </div>
+
+</div>
+
+<footer>
+  &copy; <span id="yr"></span> Brainforge AI &mdash; Built with love using
+  <a href="https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=brainforge" target="_blank">caffeine.ai</a>
+</footer>
+
+<script>
+const WORKER = 'https://caffeine-brain-worker.richard-brown-miami.workers.dev';
+document.getElementById('yr').textContent = new Date().getFullYear();
+
+document.getElementById('hamburgerBtn').addEventListener('click', () => {
+  document.getElementById('mobileMenu').classList.toggle('open');
+});
+
+async function loadHealth() {
+  try {
+    const r = await fetch(WORKER + '/health');
+    const d = await r.json();
+    document.getElementById('workerVersion').textContent = d.version || 'v?';
+    document.getElementById('d1Status').textContent = d.d1 || 'unknown';
+    if (d.uptime) {
+      const u = Number(d.uptime);
+      document.getElementById('uptimeVal').textContent = u > 3600 ? Math.floor(u/3600) + 'h' : Math.floor(u/60) + 'm';
+    }
+    const eps = Array.isArray(d.endpoints) ? d.endpoints.length : (d.endpoints ? Object.keys(d.endpoints).length : '?');
+    document.getElementById('endpointCount').textContent = eps;
+    ['versionDot','d1Dot','uptimeDot','epDot'].forEach(id => {
+      document.getElementById(id).className = 'status-dot ' + (r.ok ? 'online' : 'offline');
+    });
+    const badge = document.getElementById('systemBadge');
+    badge.textContent = r.ok ? 'System Online' : 'System Offline';
+    badge.className = 'badge ' + (r.ok ? 'badge-green' : 'badge-red');
+  } catch(e) {
+    document.getElementById('systemBadge').textContent = 'Offline';
+    document.getElementById('systemBadge').className = 'badge badge-red';
+    ['versionDot','d1Dot','uptimeDot','epDot'].forEach(id => {
+      document.getElementById(id).className = 'status-dot offline';
+    });
+  }
+}
+
+async function loadEvents() {
+  try {
+    const r = await fetch(WORKER + '/events');
+    const d = await r.json();
+    const events = Array.isArray(d) ? d : (d.events || []);
+    document.getElementById('eventsCount').textContent = events.length;
+    const container = document.getElementById('eventsList');
+    if (!events.length) {
+      container.innerHTML = '<div class="small-muted" style="padding:20px 0;text-align:center;">No events recorded yet</div>';
+      return;
+    }
+    const icons = { chat:'&#128172;', evolve:'&#128260;', memory:'&#129504;', conflict:'&#9888;&#65039;', search:'&#128269;', bash:'&#128187;', system:'&#9881;&#65039;' };
+    container.innerHTML = events.slice(-5).reverse().map(ev => {
+      const t = ev.type || ev.event_type || 'system';
+      const a = ev.action || ev.content || ev.message || JSON.stringify(ev).slice(0,60);
+      const ts = ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString() : '--';
+      return '<div class="event-item"><div class="event-icon">' + (icons[t] || '&#8226;') + '</div>' +
+        '<div class="event-body"><div class="event-type">' + t + '</div><div class="event-action">' + a.slice(0,80) + '</div></div>' +
+        '<div class="event-time">' + ts + '</div></div>';
+    }).join('');
+  } catch(e) { document.getElementById('eventsCount').textContent = '0'; }
+}
+
+const MEM_KEYS = ['hybrid_goal','user_info','last_chat','skills','identity','thinking','features','tools','dim_auto_improvement','dim_skill_acquisition','dim_identity_development','dim_thinking_improvement','dim_feature_addition','dim_tool_integration'];
+async function loadStats() {
+  try {
+    const checks = await Promise.allSettled(MEM_KEYS.map(k =>
+      fetch(WORKER + '/memory?key=' + k).then(r => r.json())
+    ));
+    const found = checks.filter(c => c.status === 'fulfilled' && c.value && !c.value.error && c.value.value).length;
+    document.getElementById('memCount').textContent = found;
+  } catch(e) { document.getElementById('memCount').textContent = '0'; }
+}
+
+async function loadConflicts() {
+  try {
+    const r = await fetch(WORKER + '/conflicts');
+    const d = await r.json();
+    const conflicts = Array.isArray(d) ? d : (d.conflicts || []);
+    document.getElementById('conflictsCount').textContent = conflicts.length;
+  } catch(e) { document.getElementById('conflictsCount').textContent = '0'; }
+}
+
+const DIM_LABELS = {
+  auto_improvement:'Auto-Improvement', skill_acquisition:'Skill Acquisition',
+  identity_development:'Identity', thinking_improvement:'Thinking',
+  feature_addition:'Features', tool_integration:'Tools'
+};
+async function loadEvolution() {
+  try {
+    const r = await fetch(WORKER + '/evolve');
+    const d = await r.json();
+    const dims = d.dimensions || {};
+    let total = 0;
+    const pills = document.getElementById('evoPills');
+    pills.innerHTML = '';
+    Object.entries(dims).forEach(([k, v]) => {
+      const cycles = typeof v === 'object' ? (v.tasks_completed || v.cycles || 0) : (v || 0);
+      total += cycles;
+      const active = cycles > 0;
+      const lbl = DIM_LABELS[k] || k.replace(/_/g,' ');
+      pills.innerHTML += '<span class="evo-pill ' + (active ? 'active' : 'needs') + '">' +
+        (active ? '&#10003;' : '&#9675;') + ' ' + lbl + (active ? ' (' + cycles + ')' : ' (needs work)') + '</span>';
+    });
+    if (!Object.keys(dims).length) pills.innerHTML = '<span class="evo-pill">No dimension data available</span>';
+    document.getElementById('cyclesCount').textContent = total;
+  } catch(e) { document.getElementById('cyclesCount').textContent = '0'; }
+}
+
+async function sendMessage() {
+  const input = document.getElementById('chatInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  const btn = document.getElementById('sendBtn');
+  btn.disabled = true;
+  appendMessage('user', msg, null);
+  document.getElementById('typingIndicator').classList.add('show');
+  scrollChat();
+  try {
+    const r = await fetch(WORKER + '/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg })
+    });
+    const d = await r.json();
+    document.getElementById('typingIndicator').classList.remove('show');
+    const reply = d.response || d.message || d.reply || JSON.stringify(d).slice(0, 500);
+    appendMessage('ai', reply, Date.now());
+  } catch(e) {
+    document.getElementById('typingIndicator').classList.remove('show');
+    appendMessage('ai', 'Connection error. Please check the Worker status above.', null);
+  }
+  btn.disabled = false;
+  scrollChat();
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/
+/g,'<br>');
+}
+
+function appendMessage(role, text, ts) {
+  const c = document.getElementById('chatMessages');
+  const time = ts ? new Date(ts).toLocaleTimeString() : 'now';
+  const saveId = ts ? 'save_' + ts : null;
+  const saveBtn = (role === 'ai' && ts) ? '<button class="save-btn" id="' + saveId + '" onclick="saveToMemory(this,&#39;' + ts + '&#39;)">&#128190; Save to Brain</button>' : '';
+  window['_msgStore'] = window['_msgStore'] || {};
+  if (ts) window['_msgStore'][ts] = text;
+  c.innerHTML += '<div class="msg ' + role + '"><div class="msg-bubble">' + esc(text) +
+    '</div><div class="msg-meta">' + (role === 'user' ? 'You' : 'Brainforge AI') + ' &bull; ' + time + ' ' + saveBtn + '</div></div>';
+  scrollChat();
+}
+
+function scrollChat() {
+  const c = document.getElementById('chatMessages');
+  c.scrollTop = c.scrollHeight;
+}
+
+async function saveToMemory(btn, ts) {
+  const text = (window['_msgStore'] || {})[ts] || '';
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+  try {
+    const r = await fetch(WORKER + '/memory', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'chat_' + ts, value: text, type: 'conversation' })
+    });
+    if (r.ok) { btn.textContent = '&#10003; Saved'; btn.classList.add('saved'); }
+    else { btn.textContent = 'Failed'; btn.disabled = false; }
+  } catch(e) { btn.textContent = 'Failed'; btn.disabled = false; }
+}
+
+document.getElementById('chatInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+function updateTimestamp() {
+  document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString();
+}
+
+async function refreshAll() {
+  await Promise.allSettled([loadHealth(), loadEvents(), loadStats(), loadConflicts(), loadEvolution()]);
+  updateTimestamp();
+}
+
+refreshAll();
+setInterval(refreshAll, 10000);
+</script>
+</body>
+</html>
