@@ -1,7 +1,7 @@
 // Brainforge AI Worker v4.3
 // Fixes: gemini-2.5-flash-lite, llama-3.1-8b-instant for chat, /api/* routing, auto-fallback
 
-const WORKER_VERSION = '4.3';
+const WORKER_VERSION = '4.4';
 
 // ---- AI Model Constants ----
 const GROQ_CHAT_MODEL = 'llama-3.1-8b-instant';     // 14,400 RPD — chat endpoint
@@ -233,14 +233,26 @@ async function handleEvents(request, env) {
   const limit = parseInt(url.searchParams.get('limit') || '50', 10);
   const agent = url.searchParams.get('agent');
 
-  let query = `SELECT * FROM events ORDER BY created_at DESC LIMIT ?`;
-  let params = [limit];
-  if (agent) {
-    query = `SELECT * FROM events WHERE agent = ? ORDER BY created_at DESC LIMIT ?`;
-    params = [agent, limit];
+  try {
+    let query, params;
+    if (agent) {
+      query = `SELECT * FROM events WHERE agent = ? ORDER BY rowid DESC LIMIT ?`;
+      params = [agent, limit];
+    } else {
+      query = `SELECT * FROM events ORDER BY rowid DESC LIMIT ?`;
+      params = [limit];
+    }
+    const rows = await env.DB.prepare(query).bind(...params).all();
+    return corsResponse({ events: rows.results || [], count: rows.results?.length || 0 });
+  } catch (err) {
+    // Fallback: try without ORDER BY if schema issue
+    try {
+      const rows = await env.DB.prepare(`SELECT * FROM events LIMIT ?`).bind(limit).all();
+      return corsResponse({ events: rows.results || [], count: rows.results?.length || 0 });
+    } catch (err2) {
+      return corsResponse({ events: [], count: 0, error: err2.message });
+    }
   }
-  const rows = await env.DB.prepare(query).bind(...params).all();
-  return corsResponse({ events: rows.results || [], count: rows.results?.length || 0 });
 }
 
 async function handleAgents(env) {
@@ -444,7 +456,7 @@ async function handleSuggest(request, env) {
   // Default: generate proactive suggestions
   const [memRows, evtRows] = await Promise.all([
     env.DB.prepare(`SELECT key, value FROM memories ORDER BY updated_at DESC LIMIT 5`).all().catch(() => ({ results: [] })),
-    env.DB.prepare(`SELECT action, details FROM events ORDER BY created_at DESC LIMIT 5`).all().catch(() => ({ results: [] })),
+    env.DB.prepare(`SELECT action, details FROM events ORDER BY rowid DESC LIMIT 5`).all().catch(() => ({ results: [] })),
   ]);
 
   const result = await callAI(
