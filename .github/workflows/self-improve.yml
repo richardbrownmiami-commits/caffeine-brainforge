@@ -1,4 +1,4 @@
-name: Brainforge Self-Improvement
+name: Self-Improve Brain
 
 on:
   schedule:
@@ -6,48 +6,39 @@ on:
   workflow_dispatch:
 
 jobs:
-  evolve:
+  evolve-nightly:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Trigger Evolution Cycle
-        id: evolve
+      - name: Run evolution cycle
         run: |
-          RESPONSE=$(curl -s -X POST https://caffeine-brain-worker.richard-brown-miami.workers.dev/evolve \
-            -H "Content-Type: application/json" \
-            -d '{"triggered_by": "github-actions-cron"}')
-          echo "Evolution response: $RESPONSE"
-          CYCLE=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('cycle',0))" 2>/dev/null || echo "unknown")
-          echo "cycle=$CYCLE" >> $GITHUB_OUTPUT
-          echo "response<<EOF" >> $GITHUB_OUTPUT
-          echo "$RESPONSE" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Log Evolution Result
-        run: |
-          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          CYCLE="${{ steps.evolve.outputs.cycle }}"
+          RESULT=$(curl -s -X POST https://caffeine-brain-worker.richard-brown-miami.workers.dev/evolve)
+          echo "Cycle result: $(echo $RESULT | head -c 200)"
           mkdir -p canonical
-          LOG_ENTRY="## Cycle $CYCLE — $TIMESTAMP
-
-\`\`\`json
-${{ steps.evolve.outputs.response }}
-\`\`\`
-"
-          if [ -f canonical/evolution-log.md ]; then
-            printf "\n%s\n" "$LOG_ENTRY" >> canonical/evolution-log.md
-          else
-            printf "# Brainforge Evolution Log\n\nAutomatically updated by self-improvement cron (daily 3am UTC).\n\n%s\n" "$LOG_ENTRY" > canonical/evolution-log.md
-          fi
-
-      - name: Commit Evolution Log
+          echo "" >> canonical/evolution-log.md
+          echo "## $(date -u '+%Y-%m-%d %H:%M UTC')" >> canonical/evolution-log.md
+          echo '```json' >> canonical/evolution-log.md
+          echo "$RESULT" | head -c 500 >> canonical/evolution-log.md
+          echo '```' >> canonical/evolution-log.md
+      - name: Commit log
         run: |
-          git config user.email "brainforge-ai@auto-improve.ai"
           git config user.name "Brainforge AI"
+          git config user.email "ai@brainforge.ai"
           git add canonical/evolution-log.md
-          git diff --staged --quiet || git commit -m "chore: evolution cycle ${{ steps.evolve.outputs.cycle }} — $(date -u +%Y-%m-%d)"
-          git push || echo "Nothing to push"
+          git diff --staged --quiet || git commit -m "auto: evolution $(date -u +%Y-%m-%d)"
+          git push
+
+  evolve-quick:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Dimension status check
+        run: |
+          STATUS=$(curl -s https://caffeine-brain-worker.richard-brown-miami.workers.dev/evolve)
+          echo "Dimensions: $STATUS" | head -c 400
+      - name: Trigger evolution cycle
+        run: |
+          RESULT=$(curl -s -X POST https://caffeine-brain-worker.richard-brown-miami.workers.dev/evolve)
+          echo "Evolution: $(echo $RESULT | head -c 300)"
