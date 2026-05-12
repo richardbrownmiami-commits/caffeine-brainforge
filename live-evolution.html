@@ -3,342 +3,284 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Evolution Dashboard — Brainforge AI</title>
+  <title>Brainforge — Evolution Dashboard</title>
   <style>
     :root {
-      --bg: #0d1117;
-      --bg2: #161b22;
-      --bg3: #21262d;
-      --border: #30363d;
-      --text: #e6edf3;
-      --text2: #8b949e;
-      --purple: #7c3aed;
-      --purple-light: #a78bfa;
-      --teal: #3fdbdb;
-      --green: #3fb950;
-      --yellow: #d29922;
-      --blue: #58a6ff;
-      --red: #f85149;
+      --bg: #0a0a0f;
+      --bg2: #111118;
+      --bg3: #1a1a24;
+      --border: #2a2a3a;
+      --accent: #6c63ff;
+      --accent2: #a78bfa;
+      --green: #22c55e;
+      --yellow: #eab308;
+      --red: #ef4444;
+      --blue: #3b82f6;
+      --orange: #f97316;
+      --text: #e2e8f0;
+      --text2: #94a3b8;
+      --text3: #64748b;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; min-height: 100vh; }
-
-    /* NAV */
-    nav { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0 1.5rem; display: flex; align-items: center; gap: 2rem; height: 56px; position: sticky; top: 0; z-index: 100; }
-    .nav-brand { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 1rem; color: var(--purple-light); text-decoration: none; }
-    .nav-brand svg { width: 22px; height: 22px; }
-    .nav-links { display: flex; gap: 0.25rem; }
-    .nav-link { color: var(--text2); text-decoration: none; padding: 0.4rem 0.8rem; border-radius: 6px; font-size: 0.875rem; transition: all 0.15s; }
-    .nav-link:hover { color: var(--text); background: var(--bg3); }
-    .nav-link.active { color: var(--purple-light); background: rgba(124,58,237,0.15); }
-    @media (max-width: 640px) { .nav-links { gap: 0; } .nav-link { padding: 0.4rem 0.5rem; font-size: 0.75rem; } }
-
-    /* LAYOUT */
-    main { max-width: 1200px; margin: 0 auto; padding: 2rem 1.5rem; }
-    @media (max-width: 640px) { main { padding: 1rem; } }
-
-    /* HEADER ROW */
-    .page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 2rem; }
-    .page-title { font-size: 1.5rem; font-weight: 700; color: var(--text); }
-    .header-right { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
-    .timestamp { font-size: 0.8rem; color: var(--text2); }
-    .status-indicator { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text2); flex-shrink: 0; }
-    .dot.running { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 1s infinite; }
-    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
-    .trigger-btn { background: var(--purple); color: #fff; border: none; padding: 0.45rem 1rem; border-radius: 6px; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 0.4rem; }
-    .trigger-btn:hover:not(:disabled) { background: #6d28d9; }
-    .trigger-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-    /* SECTION HEADERS */
-    .section-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.25rem; }
-    .section-title { font-size: 1rem; font-weight: 600; color: var(--text); }
-    .count-badge { background: var(--bg3); border: 1px solid var(--border); color: var(--text2); font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 99px; }
-
-    /* DIMENSION GRID */
-    .dim-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem; margin-bottom: 2.5rem; }
-    @media (max-width: 480px) { .dim-grid { grid-template-columns: 1fr; } }
-    .dim-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; border-top: 3px solid transparent; transition: border-color 0.2s; }
-    .dim-card[data-dim="auto_improvement"] { border-top-color: var(--green); }
-    .dim-card[data-dim="skill_acquisition"] { border-top-color: var(--purple-light); }
-    .dim-card[data-dim="identity_development"] { border-top-color: var(--teal); }
-    .dim-card[data-dim="thinking_improvement"] { border-top-color: var(--blue); }
-    .dim-card[data-dim="feature_addition"] { border-top-color: #f78166; }
-    .dim-card[data-dim="tool_integration"] { border-top-color: var(--yellow); }
-    .dim-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 0.75rem; }
-    .dim-name { font-weight: 600; font-size: 0.95rem; color: var(--text); }
-    .status-badge { font-size: 0.7rem; font-weight: 600; padding: 0.2rem 0.55rem; border-radius: 99px; text-transform: uppercase; letter-spacing: 0.04em; }
-    .badge-active { background: rgba(63,185,80,0.15); color: var(--green); border: 1px solid rgba(63,185,80,0.3); }
-    .badge-needs_work { background: rgba(210,153,34,0.15); color: var(--yellow); border: 1px solid rgba(210,153,34,0.3); }
-    .badge-evolving { background: rgba(88,166,255,0.15); color: var(--blue); border: 1px solid rgba(88,166,255,0.3); }
-    .dim-meta { display: flex; gap: 1.25rem; margin-bottom: 0.75rem; font-size: 0.8rem; color: var(--text2); }
-    .dim-meta span strong { color: var(--text); }
-    .progress-bar { background: var(--bg3); border-radius: 99px; height: 6px; overflow: hidden; }
-    .progress-fill { height: 100%; border-radius: 99px; background: var(--purple); transition: width 0.5s ease; }
-    .dim-card[data-dim="auto_improvement"] .progress-fill { background: var(--green); }
-    .dim-card[data-dim="skill_acquisition"] .progress-fill { background: var(--purple-light); }
-    .dim-card[data-dim="identity_development"] .progress-fill { background: var(--teal); }
-    .dim-card[data-dim="thinking_improvement"] .progress-fill { background: var(--blue); }
-    .dim-card[data-dim="feature_addition"] .progress-fill { background: #f78166; }
-    .dim-card[data-dim="tool_integration"] .progress-fill { background: var(--yellow); }
-
-    /* TABLE */
-    .table-section { margin-bottom: 2.5rem; }
-    .table-wrap { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-    thead { background: var(--bg3); }
-    th { padding: 0.75rem 1rem; text-align: left; font-weight: 600; color: var(--text2); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border); }
-    tbody { display: block; max-height: 340px; overflow-y: auto; }
-    thead tr, tbody tr { display: table; width: 100%; table-layout: fixed; }
-    td { padding: 0.7rem 1rem; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: top; }
-    tbody tr:last-child td { border-bottom: none; }
-    tbody tr:hover td { background: var(--bg3); }
-    .td-time { color: var(--text2); font-size: 0.78rem; width: 150px; white-space: nowrap; }
-    .td-dim { width: 160px; }
-    .td-action { width: 200px; }
-    .td-result { color: var(--text2); word-break: break-word; }
-    .empty-row td { text-align: center; color: var(--text2); padding: 2rem; }
-    @media (max-width: 640px) { .td-result { display: none; } .td-time { width: 110px; } }
-
-    /* CONFLICTS */
-    .conflicts-section { margin-bottom: 2.5rem; }
-    .conflict-cards { display: flex; flex-direction: column; gap: 0.75rem; }
-    .conflict-card { background: var(--bg2); border: 1px solid var(--border); border-left: 3px solid var(--red); border-radius: 8px; padding: 1rem 1.25rem; }
-    .conflict-key { font-weight: 600; font-size: 0.9rem; color: var(--text); margin-bottom: 0.5rem; }
-    .conflict-vals { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.5rem; }
-    @media (max-width: 480px) { .conflict-vals { grid-template-columns: 1fr; } }
-    .conflict-val-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text2); margin-bottom: 0.25rem; }
-    .conflict-val-text { font-size: 0.82rem; color: var(--text); background: var(--bg3); border-radius: 4px; padding: 0.4rem 0.6rem; word-break: break-all; }
-    .conflict-footer { display: flex; gap: 1.5rem; font-size: 0.78rem; color: var(--text2); }
-    .empty-state { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 2rem; text-align: center; color: var(--text2); }
-    .empty-state svg { margin: 0 auto 0.75rem; display: block; opacity: 0.4; }
-
-    /* LOADING SKELETON */
-    .skeleton { background: linear-gradient(90deg, var(--bg3) 0%, var(--bg2) 50%, var(--bg3) 100%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 4px; }
-    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-
-    /* SCROLLBAR */
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: var(--bg); }
-    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+    nav { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; position: sticky; top: 0; z-index: 100; }
+    nav .brand { font-weight: 700; font-size: 1.1rem; color: var(--accent2); flex: 1; }
+    nav a { color: var(--text2); text-decoration: none; font-size: 0.875rem; padding: 6px 12px; border-radius: 6px; transition: all 0.2s; }
+    nav a:hover, nav a.active { background: var(--bg3); color: var(--accent2); }
+    .container { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
+    .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+    .header h1 { font-size: 1.5rem; font-weight: 700; }
+    .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+    .badge-live { background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+    .badge-live::before { content: ''; width: 6px; height: 6px; background: var(--green); border-radius: 50%; animation: pulse 1.5s ease-in-out infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .trigger-bar { display: flex; gap: 12px; align-items: center; margin-bottom: 24px; flex-wrap: wrap; }
+    .btn { padding: 10px 20px; border-radius: 8px; font-size: 0.875rem; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { background: #5a52d5; }
+    .btn-secondary { background: var(--bg3); color: var(--text2); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--border); color: var(--text); }
+    .btn-success { background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+    .btn-success:hover { background: rgba(34,197,94,0.25); }
+    .btn-danger { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+    .btn-danger:hover { background: rgba(239,68,68,0.25); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status-msg { font-size: 0.875rem; color: var(--text3); }
+    .dim-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .dim-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 20px; transition: all 0.3s; }
+    .dim-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .dim-card.active { border-color: rgba(108,99,255,0.5); background: rgba(108,99,255,0.05); }
+    .dim-card.needs_work { border-color: rgba(234,179,8,0.4); }
+    .dim-card.complete { border-color: rgba(34,197,94,0.5); }
+    .dim-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .dim-name { font-weight: 600; font-size: 1rem; }
+    .dim-status { font-size: 0.7rem; padding: 3px 8px; border-radius: 12px; font-weight: 600; text-transform: uppercase; }
+    .status-active { background: rgba(108,99,255,0.2); color: var(--accent2); }
+    .status-needs_work { background: rgba(234,179,8,0.15); color: var(--yellow); }
+    .status-complete { background: rgba(34,197,94,0.15); color: var(--green); }
+    .dim-score { font-size: 2rem; font-weight: 700; color: var(--accent2); margin: 8px 0; }
+    .progress-bar { height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
+    .progress-fill { height: 100%; border-radius: 3px; transition: width 1s ease; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+    .dim-meta { font-size: 0.75rem; color: var(--text3); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px; }
+    .dim-icon { font-size: 1.5rem; margin-bottom: 8px; }
+    .section-title { font-size: 1.1rem; font-weight: 700; color: var(--accent2); margin-bottom: 16px; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 768px) { .grid2 { grid-template-columns: 1fr; } }
+    .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+    .conflict-item { background: var(--bg3); border: 1px solid rgba(234,179,8,0.3); border-radius: 8px; padding: 14px; margin-bottom: 10px; }
+    .conflict-key { font-size: 0.75rem; color: var(--yellow); font-family: monospace; font-weight: 600; }
+    .conflict-existing { font-size: 0.8rem; color: var(--text2); margin-top: 6px; }
+    .conflict-new { font-size: 0.8rem; color: var(--accent2); margin-top: 4px; }
+    .conflict-actions { display: flex; gap: 8px; margin-top: 10px; }
+    .event-item { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+    .event-item:last-child { border-bottom: none; }
+    .event-time { color: var(--text3); min-width: 80px; font-family: monospace; }
+    .event-type { padding: 2px 6px; border-radius: 4px; background: rgba(108,99,255,0.15); color: var(--accent2); font-size: 0.7rem; font-weight: 600; min-width: 80px; text-align: center; }
+    .event-msg { color: var(--text2); flex: 1; }
+    .loading { color: var(--text3); font-size: 0.875rem; padding: 20px; text-align: center; }
+    .toast { position: fixed; bottom: 24px; right: 24px; background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; padding: 12px 20px; font-size: 0.875rem; z-index: 999; transform: translateY(100px); opacity: 0; transition: all 0.3s; }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.success { border-color: var(--green); color: var(--green); }
+    .toast.error { border-color: var(--red); color: var(--red); }
+    .spinning { animation: spin 1s linear infinite; display: inline-block; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: var(--bg); } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
   </style>
 </head>
 <body>
+  <nav>
+    <div class="brand">🧠 Brainforge</div>
+    <a href="index.html">Dashboard</a>
+    <a href="live-knowledge.html">Knowledge</a>
+    <a href="live-evolution.html" class="active">Evolution</a>
+    <a href="live-log.html">Live Log</a>
+  </nav>
+  <div class="container">
+    <div class="header">
+      <h1>🧬 Evolution Dashboard</h1>
+      <span class="badge badge-live">LIVE</span>
+    </div>
 
-<!-- NAV -->
-<nav>
-  <a href="index.html" class="nav-brand">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
-    </svg>
-    Brainforge AI
-  </a>
-  <div class="nav-links">
-    <a href="index.html" class="nav-link">Dashboard</a>
-    <a href="live-knowledge.html" class="nav-link">Knowledge</a>
-    <a href="live-evolution.html" class="nav-link active">Evolution</a>
-    <a href="live-log.html" class="nav-link">Live Log</a>
-  </div>
-</nav>
+    <div class="trigger-bar">
+      <button class="btn btn-primary" id="triggerBtn" onclick="triggerEvolution()">⚡ Trigger Evolution Cycle</button>
+      <button class="btn btn-secondary" onclick="refreshAll()">↻ Refresh</button>
+      <span class="status-msg" id="statusMsg">Auto-refreshes every 30s</span>
+    </div>
 
-<!-- MAIN -->
-<main>
-  <!-- PAGE HEADER -->
-  <div class="page-header">
-    <h1 class="page-title">Evolution Dashboard</h1>
-    <div class="header-right">
-      <span class="timestamp" id="last-updated">Loading...</span>
-      <div class="status-indicator">
-        <span class="dot" id="status-dot"></span>
-        <span id="status-text">Idle</span>
+    <div class="dim-grid" id="dimGrid">
+      <div class="loading">Loading dimensions...</div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="section-title">⚠️ Conflicts Pending Review</div>
+        <div id="conflictList"><div class="loading">Loading conflicts...</div></div>
       </div>
-      <button class="trigger-btn" id="trigger-btn" onclick="triggerEvolve()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="5 3 19 12 5 21 5 3"/>
-        </svg>
-        Trigger Evolution
-      </button>
+      <div class="card">
+        <div class="section-title">📜 Recent Evolution Events</div>
+        <div id="evolutionLog" style="max-height:400px;overflow-y:auto"><div class="loading">Loading events...</div></div>
+      </div>
     </div>
   </div>
+  <div class="toast" id="toast"></div>
 
-  <!-- DIMENSIONS GRID -->
-  <div class="section-header">
-    <span class="section-title">6 Evolution Dimensions</span>
-    <span class="count-badge" id="active-count">—</span>
-  </div>
-  <div class="dim-grid" id="dim-grid"><!-- JS renders --></div>
+  <script>
+    const WORKER = 'https://caffeine-brain-worker.richard-brown-miami.workers.dev';
+    let autoRefreshTimer;
 
-  <!-- EVOLUTION LOG -->
-  <div class="table-section">
-    <div class="section-header">
-      <span class="section-title">Evolution Log</span>
-      <span class="count-badge" id="event-count">—</span>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th class="td-time">Time</th>
-            <th class="td-dim">Dimension</th>
-            <th class="td-action">Action</th>
-            <th class="td-result">Result</th>
-          </tr>
-        </thead>
-        <tbody id="events-tbody"><!-- JS renders --></tbody>
-      </table>
-    </div>
-  </div>
+    const DIMENSIONS = [
+      { id: 'auto_improvement', label: 'Auto Improvement', icon: '🔄', key: 'dim_auto_improvement' },
+      { id: 'skill_acquisition', label: 'Skill Acquisition', icon: '📚', key: 'dim_skill_acquisition' },
+      { id: 'identity_development', label: 'Identity Development', icon: '🪪', key: 'dim_identity_development' },
+      { id: 'thinking_improvement', label: 'Thinking Improvement', icon: '💭', key: 'dim_thinking_improvement' },
+      { id: 'feature_addition', label: 'Feature Addition', icon: '🔧', key: 'dim_feature_addition' },
+      { id: 'tool_integration', label: 'Tool Integration', icon: '🛠️', key: 'dim_tool_integration' }
+    ];
 
-  <!-- CONFLICTS PANEL -->
-  <div class="conflicts-section">
-    <div class="section-header">
-      <span class="section-title">Memory Conflicts</span>
-      <span class="count-badge" id="conflict-count">—</span>
-    </div>
-    <div id="conflicts-container"></div>
-  </div>
-</main>
+    async function loadDimensions() {
+      const grid = document.getElementById('dimGrid');
+      try {
+        const fetches = DIMENSIONS.map(d =>
+          fetch(`${WORKER}/memory?key=${d.key}`).then(r => r.json()).then(data => ({ ...d, data }))
+        );
+        const results = await Promise.all(fetches);
+        grid.innerHTML = results.map(dim => {
+          const v = dim.data.found ? dim.data.value : null;
+          const status = v ? (v.status || 'needs_work') : 'needs_work';
+          const cycles = v ? (v.cycle_count || v.cycles || 0) : 0;
+          const score = v ? (v.score || v.progress || (cycles > 0 ? Math.min(95, cycles * 15) : 5)) : 5;
+          const lastActivity = v ? (v.last_activity || v.updated_at || null) : null;
+          return `
+            <div class="dim-card ${status}">
+              <div class="dim-icon">${dim.icon}</div>
+              <div class="dim-header">
+                <span class="dim-name">${dim.label}</span>
+                <span class="dim-status status-${status}">${status.replace('_',' ')}</span>
+              </div>
+              <div class="dim-score">${score}%</div>
+              <div class="progress-bar"><div class="progress-fill" style="width:${score}%"></div></div>
+              <div class="dim-meta">
+                <span>Cycles: ${cycles}</span>
+                <span>${lastActivity ? new Date(lastActivity).toLocaleDateString() : 'No activity'}</span>
+              </div>
+            </div>`;
+        }).join('');
+      } catch(e) {
+        grid.innerHTML = '<div class="loading" style="color:var(--red)">Error loading dimensions</div>';
+      }
+    }
 
-<script>
-const WORKER = 'https://caffeine-brain-worker.richard-brown-miami.workers.dev';
+    async function loadConflicts() {
+      const list = document.getElementById('conflictList');
+      try {
+        const r = await fetch(`${WORKER}/conflicts`);
+        const d = await r.json();
+        const conflicts = d.conflicts || [];
+        if (!conflicts.length) {
+          list.innerHTML = '<div class="loading" style="color:var(--green)">✅ No conflicts — brain is consistent</div>';
+          return;
+        }
+        list.innerHTML = conflicts.map((c, i) => `
+          <div class="conflict-item" id="conflict-${i}">
+            <div class="conflict-key">⚡ ${escHtml(c.key || 'unknown_key')}</div>
+            <div class="conflict-existing"><strong>Existing:</strong> ${escHtml(String(c.existing || c.old_value || '').slice(0, 150))}</div>
+            <div class="conflict-new"><strong>New:</strong> ${escHtml(String(c.new_value || c.proposed || '').slice(0, 150))}</div>
+            <div class="conflict-actions">
+              <button class="btn btn-success" style="padding:6px 12px;font-size:0.75rem" onclick="resolveConflict(${i}, '${escHtml(c.key||'')}', 'approve')">✓ Approve New</button>
+              <button class="btn btn-danger" style="padding:6px 12px;font-size:0.75rem" onclick="resolveConflict(${i}, '${escHtml(c.key||'')}', 'reject')">✗ Keep Existing</button>
+            </div>
+          </div>`).join('');
+      } catch(e) {
+        list.innerHTML = '<div class="loading" style="color:var(--red)">Error loading conflicts</div>';
+      }
+    }
 
-const DIM_LABELS = {
-  auto_improvement: 'Auto Improvement',
-  skill_acquisition: 'Skill Acquisition',
-  identity_development: 'Identity Development',
-  thinking_improvement: 'Thinking Improvement',
-  feature_addition: 'Feature Addition',
-  tool_integration: 'Tool Integration'
-};
+    async function resolveConflict(idx, key, action) {
+      try {
+        const r = await fetch(`${WORKER}/conflicts`, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ key, action })
+        });
+        const d = await r.json();
+        if (d.success || r.ok) {
+          document.getElementById(`conflict-${idx}`)?.remove();
+          showToast(`Conflict ${action}d ✓`, 'success');
+        } else {
+          showToast('Failed: ' + (d.error||'unknown'), 'error');
+        }
+      } catch(e) { showToast('Error: '+e.message, 'error'); }
+    }
 
-const DIM_ORDER = Object.keys(DIM_LABELS);
+    async function loadEvolutionLog() {
+      const log = document.getElementById('evolutionLog');
+      try {
+        const r = await fetch(`${WORKER}/events`);
+        const d = await r.json();
+        const events = (d.events || []).filter(e => 
+          e.type === 'evolution' || e.type === 'evolve' || e.event_type === 'evolution' ||
+          String(e.message||e.action||'').toLowerCase().includes('evol')
+        ).slice(-10).reverse();
+        if (!events.length) {
+          log.innerHTML = '<div class="loading">No evolution events yet</div>';
+          return;
+        }
+        log.innerHTML = events.map(e => `
+          <div class="event-item">
+            <span class="event-time">${new Date(e.timestamp||e.created_at).toLocaleTimeString()}</span>
+            <span class="event-type">${escHtml(e.type||e.event_type||'event')}</span>
+            <span class="event-msg">${escHtml((e.message||e.action||e.data||'').toString().slice(0,120))}</span>
+          </div>`).join('');
+      } catch(e) {
+        log.innerHTML = '<div class="loading" style="color:var(--red)">Error loading events</div>';
+      }
+    }
 
-async function fetchJSON(path) {
-  try {
-    const r = await fetch(WORKER + path);
-    if (!r.ok) return null;
-    return await r.json();
-  } catch { return null; }
-}
+    async function triggerEvolution() {
+      const btn = document.getElementById('triggerBtn');
+      const msg = document.getElementById('statusMsg');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinning">⟳</span> Running...';
+      msg.textContent = 'Evolution cycle running...';
+      try {
+        const r = await fetch(`${WORKER}/evolve`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
+        const d = await r.json();
+        if (r.ok) {
+          showToast('Evolution cycle complete! 🧬', 'success');
+          msg.textContent = 'Cycle complete — ' + new Date().toLocaleTimeString();
+          await refreshAll();
+        } else {
+          showToast('Evolution failed: ' + (d.error||'unknown'), 'error');
+          msg.textContent = 'Error — check /evolve endpoint';
+        }
+      } catch(e) {
+        showToast('Error: '+e.message, 'error');
+        msg.textContent = 'Network error';
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '⚡ Trigger Evolution Cycle';
+      }
+    }
 
-function fmtTime(ts) {
-  if (!ts) return 'Never';
-  try {
-    const d = new Date(ts);
-    return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-  } catch { return String(ts).slice(0, 16); }
-}
+    function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function showToast(msg, type='success') {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast show ' + type;
+      setTimeout(() => { t.className = 'toast'; }, 3500);
+    }
 
-function statusBadge(s) {
-  const cls = s === 'active' ? 'badge-active' : s === 'evolving' ? 'badge-evolving' : 'badge-needs_work';
-  const label = s === 'needs_work' ? 'Needs Work' : s === 'active' ? 'Active' : 'Evolving';
-  return '<span class="status-badge ' + cls + '">' + label + '</span>';
-}
+    async function refreshAll() {
+      await Promise.all([loadDimensions(), loadConflicts(), loadEvolutionLog()]);
+    }
 
-function renderDimensions(data) {
-  const grid = document.getElementById('dim-grid');
-  if (!data) { grid.innerHTML = '<p style="color:var(--text2);grid-column:1/-1">Failed to load dimension status.</p>'; return; }
-  // data might have dimensions key or be the flat object
-  const dims = data.dimensions || data;
-  let activeCount = 0;
-  grid.innerHTML = DIM_ORDER.map(key => {
-    const d = dims[key] || {};
-    const status = d.status || 'needs_work';
-    if (status === 'active') activeCount++;
-    const tasks = d.tasks_completed || 0;
-    const pct = Math.min(100, Math.round((tasks / 10) * 100));
-    const lastRun = fmtTime(d.last_run);
-    return '<div class="dim-card" data-dim="' + key + '">' +
-      '<div class="dim-top"><span class="dim-name">' + DIM_LABELS[key] + '</span>' + statusBadge(status) + '</div>' +
-      '<div class="dim-meta"><span>Tasks: <strong>' + tasks + '</strong></span><span>Last run: <strong>' + lastRun + '</strong></span></div>' +
-      '<div class="progress-bar"><div class="progress-fill" style="width:' + pct + '%"></div></div>' +
-      '</div>';
-  }).join('');
-  document.getElementById('active-count').textContent = activeCount + ' active';
-}
+    function startAutoRefresh() {
+      clearInterval(autoRefreshTimer);
+      autoRefreshTimer = setInterval(refreshAll, 30000);
+    }
 
-function renderEvents(data) {
-  const tbody = document.getElementById('events-tbody');
-  if (!data) { tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Failed to load events.</td></tr>'; return; }
-  const events = (Array.isArray(data) ? data : (data.events || [])).filter(e => {
-    const t = (e.type || '').toLowerCase();
-    const a = (e.agent || '').toLowerCase();
-    return t.includes('evolv') || a.includes('brain');
-  }).slice(0, 20).reverse();
-  document.getElementById('event-count').textContent = events.length + ' events';
-  if (!events.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No evolution events yet. Trigger a cycle above.</td></tr>';
-    return;
-  }
-  tbody.innerHTML = events.map(e => {
-    const dim = e.dimension || e.data?.dimension || '—';
-    const dimLabel = DIM_LABELS[dim] || dim;
-    const action = e.action || e.type || e.message || '—';
-    const result = e.result || e.data?.result || e.content || '—';
-    return '<tr><td class="td-time">' + fmtTime(e.timestamp || e.created_at) + '</td>' +
-      '<td class="td-dim">' + dimLabel + '</td>' +
-      '<td class="td-action">' + String(action).slice(0, 60) + '</td>' +
-      '<td class="td-result">' + String(result).slice(0, 120) + '</td></tr>';
-  }).join('');
-}
-
-function renderConflicts(data) {
-  const container = document.getElementById('conflicts-container');
-  const conflicts = data?.conflicts || (Array.isArray(data) ? data : []);
-  document.getElementById('conflict-count').textContent = conflicts.length + ' found';
-  if (!conflicts.length) {
-    container.innerHTML = '<div class="empty-state"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>No memory conflicts detected</div>';
-    return;
-  }
-  container.innerHTML = '<div class="conflict-cards">' + conflicts.map(c => {
-    const oldVal = String(c.old_value || c.existing_value || '—').slice(0, 120);
-    const newVal = String(c.new_value || c.proposed_value || '—').slice(0, 120);
-    return '<div class="conflict-card">' +
-      '<div class="conflict-key">' + (c.key || c.memory_key || 'Unknown key') + '</div>' +
-      '<div class="conflict-vals">' +
-        '<div><div class="conflict-val-label">Existing value</div><div class="conflict-val-text">' + oldVal + '</div></div>' +
-        '<div><div class="conflict-val-label">Proposed value</div><div class="conflict-val-text">' + newVal + '</div></div>' +
-      '</div>' +
-      '<div class="conflict-footer"><span>Confidence: ' + (c.confidence || '—') + '</span><span>' + fmtTime(c.timestamp || c.created_at) + '</span></div>' +
-      '</div>';
-  }).join('') + '</div>';
-}
-
-async function refreshAll() {
-  const [dims, events, conflicts] = await Promise.all([
-    fetchJSON('/evolve/status'),
-    fetchJSON('/events'),
-    fetchJSON('/conflicts')
-  ]);
-  renderDimensions(dims);
-  renderEvents(events);
-  renderConflicts(conflicts);
-  document.getElementById('last-updated').textContent = 'Updated: ' + new Date().toLocaleTimeString();
-}
-
-async function triggerEvolve() {
-  const btn = document.getElementById('trigger-btn');
-  const dot = document.getElementById('status-dot');
-  const statusText = document.getElementById('status-text');
-  btn.disabled = true;
-  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Running...';
-  dot.classList.add('running');
-  statusText.textContent = 'Running';
-  try {
-    await fetch(WORKER + '/evolve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
-  } catch(e) { console.warn('evolve error', e); }
-  await refreshAll();
-  btn.disabled = false;
-  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> Trigger Evolution';
-  dot.classList.remove('running');
-  statusText.textContent = 'Idle';
-}
-
-// Boot: load data then auto-trigger
-refreshAll().then(() => triggerEvolve());
-
-// 10s auto-refresh
-setInterval(refreshAll, 10000);
-</script>
+    refreshAll();
+    startAutoRefresh();
+  </script>
 </body>
 </html>
