@@ -80,3 +80,21 @@ REPEAT: Increment evolution cycle, log to D1 and GitHub
 - Identity version: 1.0
 - Features autonomously added: 0
 - Tools integrated: DuckDuckGo, Groq, Gemini, D1, GitHub API, Cloudflare API
+
+## Self-Directed Learning Loop (v3.4)
+
+Brainforge AI now runs an autonomous learning cycle via POST /evolve:
+1. Scans D1 memories for knowledge gaps (confidence < 0.7 or status = unverified)
+2. Generates targeted questions using Groq (llama-3.3-70b-versatile)
+3. Answers each question and saves to D1 with conflict detection
+4. Flags conflicts as 'unverified' instead of overriding — human review via GET /conflicts
+
+### API
+- POST /evolve — triggers one learning cycle, returns: { cycle, gaps_found, questions_generated, answers_saved, conflicts_flagged, memories_updated }
+- GET /evolve — returns current cycle count and status
+- GET /conflicts — lists all unverified/pending_review memories for human approval
+
+### Conflict Resolution
+Humans can review GET /conflicts to see flagged conflicts.
+Approve via PATCH /memory to mark as verified.
+Conflicting values are stored with suffix _conflict_{timestamp} as unverified.
