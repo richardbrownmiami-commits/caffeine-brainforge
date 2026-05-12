@@ -481,7 +481,7 @@ async function handleBash(request, env) {
     const tunnelUrl = await getMemory(env.DB, 'bash_tunnel_url');
     if (!tunnelUrl) return corsResponse({ error: 'No tunnel configured. POST { tunnelUrl } to configure.' }, 503);
     const res = await fetch(tunnelUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    const data = await res.json().catch(() => ({ output: await res.text() }));
+    const data = await res.json().catch(async () => ({ output: await res.text() }));
     return corsResponse(data, res.status);
   }
   return corsResponse({ error: 'Method not allowed' }, 405);
