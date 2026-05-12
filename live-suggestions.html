@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Suggestions — Brainforge AI</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #111118;
+      --surface2: #1a1a24;
+      --border: #2a2a3a;
+      --text: #e2e8f0;
+      --text2: #94a3b8;
+      --accent: #6366f1;
+      --accent2: #8b5cf6;
+      --green: #10b981;
+      --yellow: #f59e0b;
+      --red: #ef4444;
+      --blue: #3b82f6;
+      --cyan: #06b6d4;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
+
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .topbar .logo { display: flex; align-items: center; gap: 10px; font-size: 1.1rem; font-weight: 700; }
+    .topbar .logo span { background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .topbar nav { display: flex; gap: 8px; }
+    .topbar nav a { color: var(--text2); text-decoration: none; padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; transition: all 0.2s; }
+    .topbar nav a:hover, .topbar nav a.active { background: var(--surface2); color: var(--text); }
+    .live-badge { background: var(--red); color: white; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+    .main { max-width: 1200px; margin: 0 auto; padding: 24px; }
+    .page-header { margin-bottom: 24px; }
+    .page-header h1 { font-size: 1.8rem; font-weight: 700; margin-bottom: 8px; }
+    .page-header p { color: var(--text2); }
+    .meta-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+    .meta-bar .info { color: var(--text2); font-size: 0.85rem; }
+    .btn { padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.875rem; font-weight: 600; transition: all 0.2s; }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { background: #4f46e5; }
+    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--border); }
+    .btn-danger { background: #dc2626; color: white; }
+    .btn-danger:hover { background: #b91c1c; }
+    .btn-sm { padding: 4px 10px; font-size: 0.775rem; }
+    .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .tabs { display: flex; gap: 4px; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 0; overflow-x: auto; }
+    .tab { padding: 10px 16px; background: transparent; border: none; color: var(--text2); cursor: pointer; font-size: 0.9rem; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; transition: all 0.2s; }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .suggestions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+    .suggestion-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      transition: border-color 0.2s;
+    }
+    .suggestion-card:hover { border-color: var(--accent); }
+    .suggestion-card.dismissed { opacity: 0.4; }
+    .card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+    .card-title { font-weight: 600; font-size: 0.95rem; }
+    .priority-badge {
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      border-radius: 20px;
+      white-space: nowrap;
+      font-weight: 600;
+    }
+    .priority-high { background: rgba(239,68,68,0.2); color: var(--red); }
+    .priority-medium { background: rgba(245,158,11,0.2); color: var(--yellow); }
+    .priority-low { background: rgba(16,185,129,0.2); color: var(--green); }
+    .card-type { font-size: 0.75rem; color: var(--text2); margin-bottom: 8px; text-transform: capitalize; }
+    .card-desc { color: var(--text2); font-size: 0.875rem; line-height: 1.5; margin-bottom: 12px; }
+    .card-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+    .dim-tag {
+      font-size: 0.7rem;
+      padding: 3px 8px;
+      border-radius: 20px;
+      background: rgba(99,102,241,0.2);
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    .gaps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+    .gap-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .gap-title { font-weight: 600; font-size: 0.9rem; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+    .gap-query { background: var(--surface2); border-radius: 6px; padding: 8px 12px; font-size: 0.8rem; color: var(--cyan); font-family: monospace; margin-top: 8px; cursor: pointer; }
+    .gap-query:hover { background: var(--border); }
+
+    .empty-state { text-align: center; padding: 48px 24px; color: var(--text2); }
+    .empty-icon { font-size: 3rem; margin-bottom: 16px; }
+    .loading { display: flex; align-items: center; gap: 8px; color: var(--text2); padding: 24px; }
+    .spinner { width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .status-bar { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; font-size: 0.8rem; color: var(--text2); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+
+    @media (max-width: 600px) {
+      .topbar { padding: 10px 16px; }
+      .topbar nav { display: none; }
+      .main { padding: 16px; }
+      .suggestions-grid, .gaps-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="logo">🧠 <span>Brainforge AI</span></div>
+    <nav>
+      <a href="index.html">Dashboard</a>
+      <a href="live-log.html">Live Log</a>
+      <a href="live-knowledge.html">Knowledge</a>
+      <a href="live-evolution.html">Evolution</a>
+      <a href="live-suggestions.html" class="active">Suggestions <span class="live-badge">LIVE</span></a>
+    </nav>
+  </div>
+
+  <div class="main">
+    <div class="page-header">
+      <h1>🎯 Auto-Suggestions</h1>
+      <p>AI-generated proactive suggestions and knowledge gap analysis</p>
+    </div>
+
+    <div class="status-bar">
+      <div class="dot"></div>
+      <span id="status-text">Loading suggestions...</span>
+      <span style="margin-left:auto" id="last-updated"></span>
+    </div>
+
+    <div class="meta-bar">
+      <div class="info" id="suggestion-count">0 active suggestions</div>
+      <div class="btn-group">
+        <button class="btn btn-primary" onclick="loadSuggestions()">🔄 Refresh</button>
+        <button class="btn btn-secondary" onclick="runGapAnalysis()">🔍 Run Gap Analysis</button>
+        <button class="btn btn-danger btn-sm" onclick="dismissAll()">Dismiss All</button>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('all', this)">All Suggestions</button>
+      <button class="tab" onclick="switchTab('knowledge_gap', this)">Knowledge Gaps</button>
+      <button class="tab" onclick="switchTab('improvement', this)">Improvements</button>
+      <button class="tab" onclick="switchTab('next_action', this)">Next Actions</button>
+      <button class="tab" onclick="switchTab('warning', this)">Warnings</button>
+      <button class="tab" onclick="switchTab('gaps', this)">Gap Analysis</button>
+    </div>
+
+    <div id="tab-all" class="tab-panel active">
+      <div id="all-suggestions" class="suggestions-grid">
+        <div class="loading"><div class="spinner"></div> Loading...</div>
+      </div>
+    </div>
+    <div id="tab-knowledge_gap" class="tab-panel">
+      <div id="suggestions-knowledge_gap" class="suggestions-grid"></div>
+    </div>
+    <div id="tab-improvement" class="tab-panel">
+      <div id="suggestions-improvement" class="suggestions-grid"></div>
+    </div>
+    <div id="tab-next_action" class="tab-panel">
+      <div id="suggestions-next_action" class="suggestions-grid"></div>
+    </div>
+    <div id="tab-warning" class="tab-panel">
+      <div id="suggestions-warning" class="suggestions-grid"></div>
+    </div>
+    <div id="tab-gaps" class="tab-panel">
+      <div style="margin-bottom:16px;">
+        <button class="btn btn-primary" onclick="runGapAnalysis()">🔍 Run Knowledge Gap Analysis</button>
+      </div>
+      <div id="gaps-grid" class="gaps-grid">
+        <div class="empty-state"><div class="empty-icon">🔍</div><p>Click "Run Gap Analysis" to analyze knowledge gaps</p></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const WORKER = 'https://caffeine-brain-worker.richard-brown-miami.workers.dev';
+    let allSuggestions = [];
+    let activeTab = 'all';
+    let refreshTimer = null;
+
+    function switchTab(tab, el) {
+      activeTab = tab;
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      el.classList.add('active');
+      const panel = document.getElementById('tab-' + tab);
+      if (panel) panel.classList.add('active');
+      if (tab !== 'gaps') renderSuggestions(tab);
+    }
+
+    function priorityEmoji(p) {
+      if (p === 'high') return '🔴';
+      if (p === 'medium') return '🟡';
+      return '🟢';
+    }
+
+    function makeSuggestionCard(s) {
+      const dimLabel = (s.dimension || '').replace(/_/g, ' ');
+      const dismissed = s.dismissed ? 'dismissed' : '';
+      return `<div class="suggestion-card ${dismissed}" id="card-${s.id}">
+        <div class="card-top">
+          <div class="card-title">${s.title || 'Suggestion'}</div>
+          <div class="priority-badge priority-${s.priority || 'low'}">${priorityEmoji(s.priority)} ${s.priority || 'low'}</div>
+        </div>
+        <div class="card-type">📌 ${(s.type || '').replace(/_/g, ' ')}</div>
+        <div class="card-desc">${s.description || ''}</div>
+        <div class="card-footer">
+          <span class="dim-tag">${dimLabel}</span>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-secondary btn-sm" onclick="actOnSuggestion('${s.id}', '${s.dimension}', '${s.type}')">Act on it</button>
+            <button class="btn btn-danger btn-sm" onclick="dismissSuggestion('${s.id}')">Dismiss</button>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    function renderSuggestions(type) {
+      const filtered = type === 'all' ? allSuggestions : allSuggestions.filter(s => s.type === type);
+      const containerId = type === 'all' ? 'all-suggestions' : 'suggestions-' + type;
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">💡</div><p>No ' + type.replace(/_/g,' ') + ' suggestions yet</p></div>';
+        return;
+      }
+      container.innerHTML = filtered.map(makeSuggestionCard).join('');
+    }
+
+    async function loadSuggestions() {
+      document.getElementById('status-text').textContent = 'Fetching suggestions...';
+      try {
+        const r = await fetch(WORKER + '/suggest');
+        const data = await r.json();
+        allSuggestions = data.suggestions || [];
+        document.getElementById('suggestion-count').textContent = allSuggestions.length + ' active suggestions';
+        document.getElementById('status-text').textContent = 'Auto-suggestions active';
+        document.getElementById('last-updated').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+        renderSuggestions(activeTab);
+        ['knowledge_gap', 'improvement', 'next_action', 'warning'].forEach(t => renderSuggestions(t));
+      } catch (e) {
+        document.getElementById('status-text').textContent = 'Error loading suggestions: ' + e.message;
+      }
+    }
+
+    async function runGapAnalysis() {
+      const grid = document.getElementById('gaps-grid');
+      grid.innerHTML = '<div class="loading"><div class="spinner"></div> Analyzing knowledge gaps...</div>';
+      document.getElementById('status-text').textContent = 'Running gap analysis...';
+      try {
+        const r = await fetch(WORKER + '/suggest/knowledge-gaps');
+        const data = await r.json();
+        const gaps = data.gaps || [];
+        if (gaps.length === 0) {
+          grid.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><p>No knowledge gaps found!</p></div>';
+          return;
+        }
+        grid.innerHTML = gaps.map(g => `
+          <div class="gap-card">
+            <div class="gap-title">
+              <span class="priority-badge priority-${g.priority}">${priorityEmoji(g.priority)} ${g.priority}</span>
+              ${g.gap}
+            </div>
+            <div class="gap-query" onclick="searchForGap('${encodeURIComponent(g.suggested_query)}')" title="Click to search">
+              🔍 ${g.suggested_query}
+            </div>
+          </div>
+        `).join('');
+        document.getElementById('status-text').textContent = gaps.length + ' knowledge gaps identified';
+      } catch (e) {
+        grid.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><p>Error: ' + e.message + '</p></div>';
+      }
+    }
+
+    async function dismissSuggestion(id) {
+      try {
+        await fetch(WORKER + '/suggest/dismiss', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id })
+        });
+        const card = document.getElementById('card-' + id);
+        if (card) card.classList.add('dismissed');
+        allSuggestions = allSuggestions.map(s => s.id === id ? { ...s, dismissed: true } : s);
+      } catch (e) { alert('Error dismissing: ' + e.message); }
+    }
+
+    async function dismissAll() {
+      if (!confirm('Dismiss all suggestions?')) return;
+      for (const s of allSuggestions) {
+        await dismissSuggestion(s.id);
+      }
+    }
+
+    function actOnSuggestion(id, dimension, type) {
+      const actions = {
+        auto_improvement: 'live-evolution.html',
+        skill_acquisition: 'live-knowledge.html',
+        identity_development: 'live-knowledge.html',
+        thinking_improvement: 'live-evolution.html',
+        feature_addition: 'live-log.html',
+        tool_integration: 'live-knowledge.html'
+      };
+      if (type === 'next_action' && dimension === 'auto_improvement') {
+        fetch(WORKER + '/evolve', { method: 'POST' }).then(() => alert('Evolution cycle triggered!')).catch(e => alert('Error: ' + e.message));
+        return;
+      }
+      window.location.href = actions[dimension] || 'live-evolution.html';
+    }
+
+    function searchForGap(query) {
+      window.open(WORKER + '/search?q=' + query, '_blank');
+    }
+
+    loadSuggestions();
+    refreshTimer = setInterval(loadSuggestions, 60000);
+  </script>
+</body>
+</html>
