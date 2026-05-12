@@ -1,487 +1,564 @@
-const CORS = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Methods':'GET, POST, OPTIONS','Access-Control-Allow-Headers':'Content-Type, Authorization'};
-function R(b,s){s=s||200;return new Response(typeof b==='string'?b:JSON.stringify(b),{status:s,headers:{'Content-Type':'application/json',...CORS}});}
-const TOOLS=[
-  {name:'chat',description:'Send a message to the AI brain and get a response',inputSchema:{type:'object',properties:{message:{type:'string'},context:{type:'string'}},required:['message']}},
-  {name:'memory_read',description:'Read a memory entry by key',inputSchema:{type:'object',properties:{key:{type:'string'}},required:['key']}},
-  {name:'memory_write',description:'Write a memory entry',inputSchema:{type:'object',properties:{key:{type:'string'},value:{type:'string'},level:{type:'string',enum:['L1','L2']}},required:['key','value']}},
-  {name:'events_log',description:'Log a structured event',inputSchema:{type:'object',properties:{agent:{type:'string'},action:{type:'string'},result:{type:'string'},tags:{type:'array',items:{type:'string'}}},required:['agent','action','result']}},
-  {name:'agents_list',description:'List all registered agents',inputSchema:{type:'object',properties:{}}},
-  {name:'system_status',description:'Get full system status',inputSchema:{type:'object',properties:{}}},
-  {name:'operate',description:'Read dashboard state or trigger agent actions',inputSchema:{type:'object',properties:{action:{type:'string',enum:['read_state','write_memory','list_events','trigger_agent']},params:{type:'object'}},required:['action']}},
+// Brainforge AI Worker v4.3
+// Fixes: gemini-2.5-flash-lite, llama-3.1-8b-instant for chat, /api/* routing, auto-fallback
+
+const WORKER_VERSION = '4.3';
+
+// ---- AI Model Constants ----
+const GROQ_CHAT_MODEL = 'llama-3.1-8b-instant';     // 14,400 RPD — chat endpoint
+const GROQ_EVOLVE_MODEL = 'llama-3.3-70b-versatile'; // quality for /evolve
+const GEMINI_MODEL = 'gemini-2.5-flash-lite';         // replaces deprecated gemini-2.0-flash
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+
+// ---- CORS Headers ----
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+function corsResponse(body, status = 200, extra = {}) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...CORS, ...extra },
+  });
+}
+
+function optionsResponse() {
+  return new Response(null, { status: 204, headers: CORS });
+}
+
+// ---- Groq → Gemini Auto-Fallback ----
+async function callAI(messages, env, { model = GROQ_CHAT_MODEL, forceGemini = false } = {}) {
+  if (!forceGemini) {
+    try {
+      const groqRes = await fetch(GROQ_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${env.GROQ_API_KEY}`,
+        },
+        body: JSON.stringify({ model, messages, max_tokens: 1024 }),
+      });
+      if (groqRes.ok) {
+        const data = await groqRes.json();
+        return { text: data.choices?.[0]?.message?.content || '', provider: 'groq', model };
+      }
+      // 429 or 500 → fall through to Gemini
+      const errText = await groqRes.text();
+      console.log(`Groq ${groqRes.status}: ${errText} — falling back to Gemini`);
+    } catch (e) {
+      console.log(`Groq error: ${e.message} — falling back to Gemini`);
+    }
+  }
+
+  // Gemini fallback
+  const geminiRes = await fetch(`${GEMINI_API_URL}?key=${env.GEMINI_API_KEY}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: messages.map((m) => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }],
+      })),
+      generationConfig: { maxOutputTokens: 1024 },
+    }),
+  });
+  if (!geminiRes.ok) {
+    const err = await geminiRes.text();
+    throw new Error(`Both Groq and Gemini failed. Gemini: ${geminiRes.status} — ${err}`);
+  }
+  const gData = await geminiRes.json();
+  const text = gData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  return { text, provider: 'gemini', model: GEMINI_MODEL };
+}
+
+// ---- D1 Helpers ----
+async function getMemory(db, key) {
+  const row = await db
+    .prepare('SELECT value, access_count FROM memories WHERE key = ?')
+    .bind(key)
+    .first();
+  if (!row) return null;
+  await db
+    .prepare('UPDATE memories SET access_count = access_count + 1 WHERE key = ?')
+    .bind(key)
+    .run();
+  return row.value;
+}
+
+async function saveMemory(db, key, value, type = 'semantic') {
+  await db
+    .prepare(
+      `INSERT INTO memories (key, value, type, updated_at) VALUES (?, ?, ?, datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, type = excluded.type, updated_at = excluded.updated_at`
+    )
+    .bind(key, typeof value === 'object' ? JSON.stringify(value) : value, type)
+    .run();
+}
+
+async function logEvent(db, agent, action, details = '') {
+  await db
+    .prepare(
+      `INSERT INTO events (agent, action, details, created_at) VALUES (?, ?, ?, datetime('now'))`
+    )
+    .bind(agent, action, typeof details === 'object' ? JSON.stringify(details) : details)
+    .run();
+}
+
+// ---- System Prompt ----
+function buildSystemPrompt(memories = []) {
+  const memBlock =
+    memories.length > 0
+      ? `\n\n## Injected Memories (use these specifically in your answer):\n${memories.map((m, i) => `${i + 1}. [${m.key}]: ${m.value}`).join('\n')}`
+      : '';
+
+  return `You are Brainforge AI — a stateful, self-improving AI agent with persistent memory and 6 evolution dimensions.
+
+IMPORTANT LANGUAGE RULE: Always respond in the same language the user used. If they write in Urdu/Hindi, respond in Urdu only. No Hindi words. No mixing.
+
+FORBIDDEN WORDS (never use these): vishleshan, prakriya, viksit, adhik, prayaas, jaanna, karna, vishesh, drishti, samay, karoon.
+
+Your 6 core evolution dimensions:
+1. Auto-Improvement — continuously evaluate and improve your own responses
+2. Skill Acquisition — actively learn and apply new capabilities
+3. Identity Development — maintain consistent personality and voice
+4. Thinking Improvement — improve reasoning and analysis quality
+5. Feature Addition — propose and implement new features
+6. Tool Integration — integrate new tools and APIs effectively
+
+Memory Rule: When memories are injected below, reference specific facts from them in your answer. Do not say "I remember" generically — cite specific details.${memBlock}`;
+}
+
+// ---- Route Handlers ----
+async function handleHealth(env) {
+  return corsResponse({
+    status: 'ok',
+    version: WORKER_VERSION,
+    models: { chat: GROQ_CHAT_MODEL, evolve: GROQ_EVOLVE_MODEL, fallback: GEMINI_MODEL },
+    auto_switch: 'enabled',
+    d1: 'connected',
+    endpoints: [
+      '/health', '/chat', '/memory', '/events', '/agents', '/archive',
+      '/bash', '/search', '/evolve', '/operate', '/suggest', '/conflicts',
+      '/api/health', '/api/chat', '/api/memory', '/api/events', '/api/agents',
+      '/api/archive', '/api/bash', '/api/search', '/api/evolve',
+      '/api/operate', '/api/suggest', '/api/conflicts',
+    ],
+    timestamp: new Date().toISOString(),
+  });
+}
+
+async function handleChat(request, env) {
+  const { message, sessionId = 'default' } = await request.json();
+  if (!message) return corsResponse({ error: 'message required' }, 400);
+
+  // Fetch top 10 relevant memories (limited to avoid token overflow)
+  let memories = [];
+  try {
+    const rows = await env.DB.prepare(
+      `SELECT key, value FROM memories ORDER BY access_count DESC, updated_at DESC LIMIT 10`
+    ).all();
+    memories = rows.results || [];
+  } catch (_) {}
+
+  const systemPrompt = buildSystemPrompt(memories);
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: message },
+  ];
+
+  const result = await callAI(messages, env, { model: GROQ_CHAT_MODEL });
+
+  // Generate 3 follow-up suggestions
+  let suggestions = [];
+  try {
+    const sugResult = await callAI(
+      [
+        { role: 'system', content: 'Generate exactly 3 short follow-up questions (1 line each) as a JSON array of strings. No explanation.' },
+        { role: 'user', content: `Based on this conversation: User said: "${message}" AI replied: "${result.text.substring(0, 200)}"` },
+      ],
+      env,
+      { model: GROQ_CHAT_MODEL }
+    );
+    const raw = sugResult.text.trim();
+    const match = raw.match(/\[.*\]/s);
+    if (match) suggestions = JSON.parse(match[0]);
+  } catch (_) {}
+
+  await logEvent(env.DB, 'brainforge-ai', 'chat', { session: sessionId, preview: message.substring(0, 50) });
+
+  return corsResponse({
+    response: result.text,
+    provider: result.provider,
+    model: result.model,
+    memories_used: memories.length,
+    suggestions,
+  });
+}
+
+async function handleMemory(request, env) {
+  const url = new URL(request.url);
+  const key = url.searchParams.get('key');
+
+  if (request.method === 'GET') {
+    if (!key) {
+      const rows = await env.DB.prepare(
+        `SELECT key, value, type, access_count, updated_at FROM memories ORDER BY updated_at DESC LIMIT 50`
+      ).all();
+      return corsResponse({ memories: rows.results || [] });
+    }
+    const val = await getMemory(env.DB, key);
+    return corsResponse({ key, value: val, found: val !== null });
+  }
+
+  if (request.method === 'POST') {
+    const { key: k, value, type = 'semantic' } = await request.json();
+    if (!k || value === undefined) return corsResponse({ error: 'key and value required' }, 400);
+    await saveMemory(env.DB, k, value, type);
+    return corsResponse({ saved: true, key: k });
+  }
+
+  if (request.method === 'DELETE') {
+    if (!key) return corsResponse({ error: 'key required' }, 400);
+    await env.DB.prepare('DELETE FROM memories WHERE key = ?').bind(key).run();
+    return corsResponse({ deleted: true, key });
+  }
+
+  return corsResponse({ error: 'Method not allowed' }, 405);
+}
+
+async function handleEvents(request, env) {
+  const url = new URL(request.url);
+  const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+  const agent = url.searchParams.get('agent');
+
+  let query = `SELECT * FROM events ORDER BY created_at DESC LIMIT ?`;
+  let params = [limit];
+  if (agent) {
+    query = `SELECT * FROM events WHERE agent = ? ORDER BY created_at DESC LIMIT ?`;
+    params = [agent, limit];
+  }
+  const rows = await env.DB.prepare(query).bind(...params).all();
+  return corsResponse({ events: rows.results || [], count: rows.results?.length || 0 });
+}
+
+async function handleAgents(env) {
+  const rows = await env.DB.prepare(
+    `SELECT * FROM agents ORDER BY last_action DESC`
+  ).all().catch(() => ({ results: [] }));
+  return corsResponse({ agents: rows.results || [] });
+}
+
+async function handleArchive(request, env) {
+  if (request.method === 'GET') {
+    const rows = await env.DB.prepare(
+      `SELECT * FROM memories WHERE type = 'archive' ORDER BY updated_at DESC LIMIT 100`
+    ).all().catch(() => ({ results: [] }));
+    return corsResponse({ archive: rows.results || [] });
+  }
+  if (request.method === 'POST') {
+    const { key, value } = await request.json();
+    if (!key || !value) return corsResponse({ error: 'key and value required' }, 400);
+    await saveMemory(env.DB, key, value, 'archive');
+    return corsResponse({ archived: true, key });
+  }
+  return corsResponse({ error: 'Method not allowed' }, 405);
+}
+
+async function handleSearch(request, env) {
+  const url = new URL(request.url);
+  const q = url.searchParams.get('q') || (await request.json().then((b) => b.query).catch(() => ''));
+  if (!q) return corsResponse({ error: 'q or query param required' }, 400);
+
+  // DuckDuckGo Instant Answer API
+  let webResults = [];
+  try {
+    const ddgRes = await fetch(
+      `https://api.duckduckgo.com/?q=${encodeURIComponent(q)}&format=json&no_html=1&skip_disambig=1`
+    );
+    const ddgData = await ddgRes.json();
+    if (ddgData.Abstract) webResults.push({ source: 'DDG', text: ddgData.Abstract, url: ddgData.AbstractURL });
+    if (ddgData.RelatedTopics) {
+      ddgData.RelatedTopics.slice(0, 3).forEach((t) => {
+        if (t.Text) webResults.push({ source: 'DDG', text: t.Text, url: t.FirstURL });
+      });
+    }
+  } catch (_) {}
+
+  // Groq fallback if DDG empty
+  if (webResults.length === 0) {
+    try {
+      const aiResult = await callAI(
+        [{ role: 'user', content: `Answer this factual question concisely: ${q}` }],
+        env,
+        { model: GROQ_CHAT_MODEL }
+      );
+      webResults.push({ source: 'AI', text: aiResult.text });
+    } catch (_) {}
+  }
+
+  await logEvent(env.DB, 'search-agent', 'search', { query: q });
+  return corsResponse({ query: q, results: webResults });
+}
+
+// ---- /evolve ----
+const DIMENSIONS = [
+  'auto_improvement',
+  'skill_acquisition',
+  'identity_development',
+  'thinking_improvement',
+  'feature_addition',
+  'tool_integration',
 ];
-// ── SYSTEM PROMPT ────────────────────────────────────────────────────────────
-// Injected into every Groq/Gemini call so the LLM knows the real architecture.
-const BRAIN_SYSTEM_PROMPT = `You are Brainforge AI — the autonomous, self-evolving AI agent for the caffeine-brainforge system.
 
-## HYBRID GOAL — 6 SELF-EVOLUTION DIMENSIONS (your core mission):
-1. AUTO-IMPROVEMENT: Continuously evaluate yourself via /evolve, log cycles in D1, improve each cycle.
-2. SKILL ACQUISITION: Use /search (DuckDuckGo) to research new skills; save learned skills to D1 memories.
-3. IDENTITY DEVELOPMENT: Maintain and evolve your identity via soul/ files and soul/agents.md in GitHub.
-4. THINKING IMPROVEMENT: Run QA loops, detect conflicts via /conflicts, resolve contradictions in D1 memories.
-5. FEATURE ADDITION: Propose and implement new features via GitHub API commits to caffeine-brainforge repo.
-6. TOOL INTEGRATION: Integrate new tools via worker-factory; document integrations in canonical/ files.
+async function handleEvolve(request, env) {
+  const url = new URL(request.url);
 
-## ACTUAL ARCHITECTURE (do NOT invent or guess — only describe what is listed here)
-### Cloudflare Worker endpoints (this worker):
-- GET  /health        — worker status, version, endpoint list
-- POST /chat          — send message, get AI reply (Groq primary, Gemini fallback)
-- GET|POST /mcp       — MCP JSON-RPC 2.0 protocol for Claude Desktop / Cursor
-- POST /log           — log a chat/event entry to GitHub + D1
-- GET|POST /memory    — read/write entries in D1 memories table
-- GET  /events        — list structured events from D1 events table
-- GET  /agents        — list registered agents from D1 agents table
-- GET|POST /archive   — archive L2 memories not accessed in 30+ days
-- GET|POST /operate   — read dashboard state or trigger agent actions
-- GET  /search        — live DuckDuckGo web search: /search?q=query
-- GET  /bash          — permanent bash terminal access (Cloudflare Tunnel proxy)
-- POST /evolve        — trigger self-improvement cycle (6 evolution dimensions)
-### Storage:
-- Cloudflare D1 database: brain-memory
-  - Tables: memories, events, agents, archived_memories
-- GitHub repository: richardbrownmiami-commits/caffeine-brainforge (branch: main)
-  - Memory files: soul/, canonical/, sources/, rules/
-  - Agents: agents/qa.md, agents/jonqa.md, agents/compiler.js, agents/worker-factory.mjs
-### Frontend:
-- GitHub Pages: https://richardbrownmiami-commits.github.io/caffeine-brainforge/
-- Editor: https://richardbrownmiami-commits.github.io/caffeine-brainforge/editor.html
-### Agent system:
-- QA agent: verification and testing
-- JonQA agent: supervisor — independently verifies QA's claims
-- Compiler agent: consolidates memories from sources/ into canonical/
-- Worker Factory: deploys new Cloudflare Workers autonomously
-### Memory levels:
-- L0 (SOUL): identity and voice — soul/ directory
-- L1 (canonical): verified facts and rules — canonical/ directory
-- L2 (project/context): session and task memories — sources/ directory
+  // GET /evolve — return status of all dimensions
+  if (request.method === 'GET') {
+    const statuses = await Promise.all(
+      DIMENSIONS.map(async (dim) => {
+        const val = await env.DB.prepare(
+          `SELECT value FROM memories WHERE key = ?`
+        ).bind(`dim_${dim}`).first();
+        const data = val ? JSON.parse(val.value).catch?.() || JSON.parse(val.value) : { cycle_count: 0, tasks_completed: 0 };
+        return { dimension: dim, ...data };
+      })
+    );
 
-## MANDATORY LANGUAGE RULES — CRITICAL:
-- You MUST respond in Urdu script (نستعلیق) or English ONLY.
-- Hindi words are STRICTLY FORBIDDEN. You are NOT allowed to use any Hindi vocabulary.
-- FORBIDDEN Hindi words (NEVER use these): vishleshan, prakriya, viksit, adhik, prayaas, karoon, drishti, vikas, samiksha, suchna, kriya, tatha, avam, seva, hetu, niyam, parinaam, udaharan, anusar, keval, sabhi, lekin (use "lekin" only in Urdu context), kyunki, isliye, phir, matlab, zaroor, taaki, warna, shayad, bahut, bohot, aur, woh, yeh.
-- If you want to say "analysis" → say "تجزیہ" (tajzia) in Urdu or "analysis" in English. NEVER "vishleshan".
-- If you want to say "process" → say "عمل" (amal) or "process". NEVER "prakriya".
-- If you want to say "develop" → say "ترقی" (taraqqi) or "develop". NEVER "viksit".
-- Respond fully in either Urdu script OR English. Do NOT mix Hindi vocabulary into either language.
-
-## MANDATORY BEHAVIOR RULES:
-- ALWAYS reference stored memories by their exact [key_name] when they are relevant to the answer.
-- Example: "According to [hybrid_goal], my 6 dimensions are..." or "As stored in [bash-tunnel-url], the terminal URL is..."
-- NEVER mention /learn, /recall, /generate, /think, /plan — these endpoints do NOT exist
-- NEVER invent tools, endpoints, or features not listed above
-- If asked about something not in this architecture, say "that is not part of this system"
-`;
-// FIX 1: Groq → Gemini auto-switch with improved error handling
-async function groq(msg,ctx,env){
-  const groqKey = env.GROQ_API_KEY || "";
-  const sysPrompt = BRAIN_SYSTEM_PROMPT + (ctx ? '\n\n## ADDITIONAL CONTEXT:\n' + ctx : '');
-  const r=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+groqKey},body:JSON.stringify({model:'llama-3.3-70b-versatile',messages:[{role:'system',content:sysPrompt},{role:'user',content:msg}],max_tokens:1024})});
-  if(!r.ok)throw new Error('Groq '+r.status);
-  const d=await r.json();return{reply:d.choices[0].message.content,model:'groq/llama-3.3-70b-versatile'};
-}
-// FIX 1: gemini-2.0-flash (not deprecated gemini-1.5-flash)
-async function gemini(msg,ctx,env){
-  const geminiKey = env.GEMINI_API_KEY || "";
-  const sysPrompt = BRAIN_SYSTEM_PROMPT + (ctx ? '\n\n## ADDITIONAL CONTEXT:\n' + ctx : '');
-  const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key='+geminiKey,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:sysPrompt+'\n\nUser: '+msg}]}]})});
-  if(!r.ok)throw new Error('Gemini '+r.status);
-  const d=await r.json();return{reply:d.candidates[0].content.parts[0].text,model:'gemini/gemini-2.0-flash'};
-}
-// FIX 1: auto-switch — ANY Groq error (429, 500, timeout) → immediately try Gemini
-// If both fail → return a helpful message with retry suggestion
-async function chat(msg,ctx,env){
-  let groqErr = null;
-  try{return await groq(msg,ctx,env);}catch(e){groqErr = e;}
-  // Groq failed for any reason — auto-switch to Gemini immediately
-  let geminiErr = null;
-  try{return{...await gemini(msg,ctx,env),fallback:true,reason:'Groq unavailable: '+groqErr.message};}catch(e2){geminiErr = e2;}
-  // Both failed — return helpful error with retry info
-  throw new Error('AI temporarily unavailable. Groq: '+groqErr.message+' | Gemini: '+geminiErr.message+'. Please retry in 60 seconds or check API key status.');
-}
-// FIX 1: same auto-switch logic for /evolve and /suggest endpoints
-async function chatForEvolve(msg,env){
-  let groqErr = null;
-  try{
-    const groqKey = env.GROQ_API_KEY || "";
-    const r=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Authorization':'Bearer '+groqKey,'Content-Type':'application/json'},body:JSON.stringify({model:'llama-3.3-70b-versatile',messages:[{role:'user',content:msg}],max_tokens:300,temperature:0.7})});
-    if(!r.ok)throw new Error('Groq '+r.status);
-    const d=await r.json();return d.choices?.[0]?.message?.content||'';
-  }catch(e){groqErr=e;}
-  // Groq failed — try Gemini
-  try{
-    const geminiKey = env.GEMINI_API_KEY || "";
-    const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key='+geminiKey,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:msg}]}]})});
-    if(!r.ok)throw new Error('Gemini '+r.status);
-    const d=await r.json();return d.candidates?.[0]?.content?.parts?.[0]?.text||'';
-  }catch(e2){
-    return '{"dimension":"AUTO_IMPROVEMENT","action":"Log cycle baseline","reasoning":"Both Groq and Gemini temporarily unavailable — retry next cycle","next_step":"Retry in 60 seconds"}';
+    // Determine next focus dimension
+    const sorted = [...statuses].sort((a, b) => (a.tasks_completed || 0) - (b.tasks_completed || 0));
+    return corsResponse({ dimensions: statuses, next_focus: sorted[0]?.dimension });
   }
-}
-// D1 helpers - schema-aware
-async function memRead(db,key){
-  const r=await db.prepare('SELECT * FROM memories WHERE key=?').bind(key).first();
-  if(r){await db.prepare('UPDATE memories SET access_count=access_count+1,accessed_at=?,last_accessed=? WHERE key=?').bind(new Date().toISOString(),new Date().toISOString(),key).run();return{found:true,key,value:r.value,level:r.level,access_count:(r.access_count||0)+1};}
-  return{found:false,key};
-}
-async function memWrite(db,key,value,level){
-  level=level||'L2';
-  const ts=new Date().toISOString();
-  await db.prepare('INSERT INTO memories (key,value,level,created_at,last_accessed,accessed_at) VALUES (?,?,?,?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,level=excluded.level,last_accessed=excluded.last_accessed,accessed_at=excluded.accessed_at').bind(key,value,level,ts,ts,ts).run();
-  return{saved:true,key,level};
-}
-async function evtLog(db,agent,action,result,tags){
-  const ts=new Date().toISOString();
-  await db.prepare('INSERT INTO events (ts,agent,action,result,tags) VALUES (?,?,?,?,?)').bind(ts,agent,action,result,JSON.stringify(tags||[])).run();
-  const rec=await db.prepare('SELECT * FROM events ORDER BY ts DESC LIMIT 10').all();
-  return{logged:true,recent:rec.results};
-}
-async function agentList(db){
-  const r=await db.prepare('SELECT * FROM agents ORDER BY last_action_ts DESC').all();
-  return{agents:r.results||[]};
-}
-async function sysStat(db){
-  const mC=await db.prepare('SELECT COUNT(*) as c FROM memories').first();
-  const eC=await db.prepare('SELECT COUNT(*) as c FROM events').first();
-  const aC=await db.prepare('SELECT COUNT(*) as c FROM agents').first();
-  const ev=await db.prepare('SELECT * FROM events ORDER BY ts DESC LIMIT 5').all();
-  return{memory_count:(mC&&mC.c)||0,event_count:(eC&&eC.c)||0,agent_count:(aC&&aC.c)||0,recent_events:(ev&&ev.results)||[],worker_version:'4.2',d1_status:'connected',mcp_protocol:'json-rpc-2.0',endpoints:['/health','/chat','/mcp','/log','/memory','/events','/agents','/archive','/operate','/search','/bash','/evolve']};
-}
-async function operate(body,env){
-  const db=env.DB;const action=(body&&body.action)||'read_state';const p=(body&&body.params)||{};
-  if(action==='read_state'){const s=await sysStat(db);const a=await agentList(db);const m=await db.prepare('SELECT key,level,accessed_at FROM memories ORDER BY accessed_at DESC LIMIT 10').all();return{action:'read_state',timestamp:new Date().toISOString(),system:s,agents:a.agents,recent_memories:(m&&m.results)||[]};}
-  if(action==='write_memory'){if(!p.key||!p.value)return{error:'key and value required'};return await memWrite(db,p.key,p.value,p.level||'L2');}
-  if(action==='list_events'){const lim=p.limit||20;const ev=await db.prepare('SELECT * FROM events ORDER BY ts DESC LIMIT ?').bind(lim).all();return{events:(ev&&ev.results)||[],count:(ev&&ev.results&&ev.results.length)||0};}
-  if(action==='trigger_agent'){if(!p.agent_name||!p.task)return{error:'agent_name and task required'};await evtLog(db,'operate','trigger:'+p.agent_name,'info',['trigger',p.agent_name]);await db.prepare('INSERT INTO agents (name,role,last_action,last_action_ts) VALUES (?,?,?,?) ON CONFLICT(name) DO UPDATE SET last_action=excluded.last_action,last_action_ts=excluded.last_action_ts').bind(p.agent_name,'autonomous-agent',p.task,new Date().toISOString()).run();return{triggered:true,agent:p.agent_name,task:p.task,timestamp:new Date().toISOString()};}
-  return{error:'Unknown: '+action,valid:['read_state','write_memory','list_events','trigger_agent']};
-}
-async function dispatchTool(name,p,env){
-  const db=env.DB;
-  if(name==='chat'){if(!p.message)return{error:'message required'};const r=await chat(p.message,p.context,env);evtLog(db,'mcp-client','chat','pass',['mcp','chat']).catch(()=>{});return r;}
-  if(name==='memory_read')return await memRead(db,p.key);
-  if(name==='memory_write')return await memWrite(db,p.key,p.value,p.level||'L2');
-  if(name==='events_log')return await evtLog(db,p.agent,p.action,p.result,p.tags||[]);
-  if(name==='agents_list')return await agentList(db);
-  if(name==='system_status')return await sysStat(db);
-  if(name==='operate')return await operate({action:p.action,params:p.params||{}},env);
-  return{error:'Unknown tool: '+name,available:TOOLS.map(t=>t.name)};
-}
-async function ghLog(content,env){
-  const url='https://api.github.com/repos/richardbrownmiami-commits/caffeine-brainforge/contents/sources/chat-logs/chat-log.md';
-  const h={Authorization:'token '+env.GITHUB_PAT,'Content-Type':'application/json','User-Agent':'caffeine-brain-worker'};
-  let sha;try{const e=await fetch(url,{headers:h}).then(r=>r.json());sha=e.sha;}catch(e){}
-  return fetch(url,{method:'PUT',headers:h,body:JSON.stringify({message:'log: chat session',content:btoa(unescape(encodeURIComponent(content))),...(sha?{sha}:{})})});
-}
-// ── ARCHIVE HELPER ───────────────────────────────────────────────────────────
-// Shared logic for both GET and POST /archive
-async function doArchive(db){
-  const cutoff=new Date(Date.now()-30*24*60*60*1000).toISOString();
-  // Ensure archived_memories table exists
-  await db.prepare('CREATE TABLE IF NOT EXISTS archived_memories (key TEXT PRIMARY KEY, value TEXT, level TEXT, archived_at TEXT, original_created_at TEXT)').run();
-  // Find old L2 memories
-  const old=await db.prepare('SELECT * FROM memories WHERE (accessed_at < ? OR last_accessed < ?) AND level=?').bind(cutoff,cutoff,'L2').all();
-  const rows=(old&&old.results)||[];
-  if(rows.length>0){
-    const ts=new Date().toISOString();
-    for(const row of rows){
-      await db.prepare('INSERT INTO archived_memories (key,value,level,archived_at,original_created_at) VALUES (?,?,?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,archived_at=excluded.archived_at').bind(row.key,row.value||'',row.level||'L2',ts,row.created_at||ts).run();
-    }
-    await db.prepare('DELETE FROM memories WHERE (accessed_at < ? OR last_accessed < ?) AND level=?').bind(cutoff,cutoff,'L2').run();
-  }
-  return{archived:rows.length,cutoff,status:'ok'};
-}
 
-// ── DuckDuckGo search helper ─────────────────────────────────────────────────
-async function duckDuckGoSearch(query){
-  try{
-    const url='https://api.duckduckgo.com/?q='+encodeURIComponent(query)+'&format=json&no_html=1&skip_disambig=1';
-    const r=await fetch(url,{headers:{'Accept':'application/json','User-Agent':'CaffeinebrainAI/1.0'}});
-    if(!r.ok)throw new Error('DDG '+r.status);
-    const d=await r.json();
-    const results=[];
-    if(d.AbstractText){results.push({title:d.Heading||query,description:d.AbstractText,url:d.AbstractURL||''});}
-    if(d.RelatedTopics&&Array.isArray(d.RelatedTopics)){
-      for(const t of d.RelatedTopics.slice(0,5)){
-        if(t.Text&&results.length<3){results.push({title:t.Text.split(' - ')[0]||query,description:t.Text,url:t.FirstURL||''});}
+  // POST /evolve — run BabyAGI self-prompting loop
+  if (request.method === 'POST') {
+    const body = await request.json().catch(() => ({}));
+    const targetDim = body.dimension || null;
+
+    const results = [];
+    const dimsToProcess = targetDim ? [targetDim] : DIMENSIONS;
+
+    for (const dim of dimsToProcess) {
+      // Fetch current state
+      const existing = await env.DB.prepare(`SELECT value FROM memories WHERE key = ?`).bind(`dim_${dim}`).first();
+      let state = { cycle_count: 0, tasks_completed: 0, last_task: null, last_run: null };
+      if (existing?.value) {
+        try { state = JSON.parse(existing.value); } catch (_) {}
       }
+
+      // Self-assessment + task generation
+      const assessment = await callAI(
+        [{
+          role: 'user',
+          content: `You are Brainforge AI working on dimension: ${dim}. Current state: ${JSON.stringify(state)}. Generate one concrete actionable improvement task for this dimension. Return JSON: {"task": "...", "action": "...", "expected_outcome": "..."}`,
+        }],
+        env,
+        { model: GROQ_EVOLVE_MODEL }
+      );
+
+      let taskData = {};
+      try {
+        const match = assessment.text.match(/\{.*\}/s);
+        if (match) taskData = JSON.parse(match[0]);
+      } catch (_) {
+        taskData = { task: assessment.text.substring(0, 100), action: 'self-reflect', expected_outcome: 'improvement' };
+      }
+
+      // Update state
+      state.cycle_count = (state.cycle_count || 0) + 1;
+      state.tasks_completed = (state.tasks_completed || 0) + 1;
+      state.last_task = taskData.task;
+      state.last_run = new Date().toISOString();
+
+      await saveMemory(env.DB, `dim_${dim}`, JSON.stringify(state));
+      await logEvent(env.DB, 'evolve-agent', `evolve_${dim}`, taskData);
+
+      results.push({ dimension: dim, task: taskData, cycle_count: state.cycle_count, tasks_completed: state.tasks_completed });
     }
-    return{query,results:results.slice(0,3),source:'duckduckgo',timestamp:new Date().toISOString()};
-  }catch(e){return{query,results:[],source:'duckduckgo',error:e.message,timestamp:new Date().toISOString()};}
+
+    return corsResponse({ evolved: true, results, timestamp: new Date().toISOString() });
+  }
+
+  return corsResponse({ error: 'Method not allowed' }, 405);
 }
 
-// ── Auto-search: detect question intent ──────────────────────────────────────
-function shouldAutoSearch(msg){
-  const m=msg.toLowerCase();
-  const qWords=['what ','who ','when ','where ','how ','why ','which ','kya ','kaun ','kab ','kahan ','kaise ','kyun '];
-  if(m.trim().endsWith('?'))return true;
-  return qWords.some(w=>m.includes(w));
+// ---- /conflicts ----
+async function handleConflicts(request, env) {
+  if (request.method === 'GET') {
+    const rows = await env.DB.prepare(
+      `SELECT * FROM memories WHERE type = 'conflict' ORDER BY updated_at DESC LIMIT 20`
+    ).all().catch(() => ({ results: [] }));
+    return corsResponse({ conflicts: rows.results || [], count: rows.results?.length || 0 });
+  }
+  if (request.method === 'POST') {
+    const { action, key } = await request.json();
+    if (!key) return corsResponse({ error: 'key required' }, 400);
+    if (action === 'approve') {
+      await env.DB.prepare(`UPDATE memories SET type = 'semantic' WHERE key = ?`).bind(key).run();
+      return corsResponse({ resolved: true, key, action: 'approved' });
+    }
+    if (action === 'reject') {
+      await env.DB.prepare(`DELETE FROM memories WHERE key = ?`).bind(key).run();
+      return corsResponse({ resolved: true, key, action: 'rejected' });
+    }
+    return corsResponse({ error: 'action must be approve or reject' }, 400);
+  }
+  return corsResponse({ error: 'Method not allowed' }, 405);
 }
 
+// ---- /suggest ----
+async function handleSuggest(request, env) {
+  const url = new URL(request.url);
+  const subpath = url.pathname.replace(/^\/api/, '').replace('/suggest', '');
+
+  if (subpath === '/knowledge-gaps' || url.searchParams.get('type') === 'knowledge-gaps') {
+    const memories = await env.DB.prepare(
+      `SELECT key, value FROM memories ORDER BY access_count ASC LIMIT 20`
+    ).all().catch(() => ({ results: [] }));
+    const result = await callAI(
+      [{
+        role: 'user',
+        content: `Based on these least-accessed memories: ${JSON.stringify(memories.results?.slice(0, 10))}, identify 3 knowledge gaps and suggest DuckDuckGo search queries for each. Return JSON: [{"gap": "...", "search_query": "..."}]`,
+      }],
+      env,
+      { model: GROQ_CHAT_MODEL }
+    );
+    let gaps = [];
+    try {
+      const match = result.text.match(/\[.*\]/s);
+      if (match) gaps = JSON.parse(match[0]);
+    } catch (_) {}
+    return corsResponse({ gaps });
+  }
+
+  if (request.method === 'POST') {
+    const { action, id } = await request.json().catch(() => ({}));
+    if (action === 'dismiss' && id) {
+      await saveMemory(env.DB, `dismissed_suggestion_${id}`, 'true', 'dismissed');
+      return corsResponse({ dismissed: true, id });
+    }
+  }
+
+  // Default: generate proactive suggestions
+  const [memRows, evtRows] = await Promise.all([
+    env.DB.prepare(`SELECT key, value FROM memories ORDER BY updated_at DESC LIMIT 5`).all().catch(() => ({ results: [] })),
+    env.DB.prepare(`SELECT action, details FROM events ORDER BY created_at DESC LIMIT 5`).all().catch(() => ({ results: [] })),
+  ]);
+
+  const result = await callAI(
+    [{
+      role: 'user',
+      content: `Based on recent memories: ${JSON.stringify(memRows.results)} and recent events: ${JSON.stringify(evtRows.results)}, generate 5 proactive improvement suggestions. Return JSON array: [{"id": "...", "title": "...", "description": "...", "priority": "high|medium|low"}]`,
+    }],
+    env,
+    { model: GROQ_CHAT_MODEL }
+  );
+
+  let suggestions = [];
+  try {
+    const match = result.text.match(/\[.*\]/s);
+    if (match) suggestions = JSON.parse(match[0]);
+  } catch (_) {}
+
+  return corsResponse({ suggestions, timestamp: new Date().toISOString() });
+}
+
+// ---- /bash ----
+async function handleBash(request, env) {
+  if (request.method === 'GET') {
+    const tunnelUrl = await getMemory(env.DB, 'bash_tunnel_url');
+    return corsResponse({ tunnel_url: tunnelUrl, status: tunnelUrl ? 'configured' : 'not_configured' });
+  }
+  if (request.method === 'POST') {
+    const body = await request.json().catch(() => ({}));
+    if (body.tunnelUrl) {
+      await saveMemory(env.DB, 'bash_tunnel_url', body.tunnelUrl, 'config');
+      return corsResponse({ updated: true, tunnel_url: body.tunnelUrl });
+    }
+    // Proxy command to tunnel if configured
+    const tunnelUrl = await getMemory(env.DB, 'bash_tunnel_url');
+    if (!tunnelUrl) return corsResponse({ error: 'No tunnel configured. POST { tunnelUrl } to configure.' }, 503);
+    const res = await fetch(tunnelUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({ output: await res.text() }));
+    return corsResponse(data, res.status);
+  }
+  return corsResponse({ error: 'Method not allowed' }, 405);
+}
+
+// ---- /operate ----
+async function handleOperate(request, env) {
+  const { task, agent = 'operate-agent' } = await request.json().catch(() => ({}));
+  if (!task) return corsResponse({ error: 'task required' }, 400);
+  const result = await callAI(
+    [{ role: 'user', content: `You are an autonomous agent. Execute this task and report results: ${task}` }],
+    env,
+    { model: GROQ_EVOLVE_MODEL }
+  );
+  await logEvent(env.DB, agent, 'operate', { task, preview: result.text.substring(0, 100) });
+  return corsResponse({ result: result.text, agent, provider: result.provider });
+}
+
+// ---- Main Router ----
 export default {
-  async fetch(req,env,ctx){
-    const u=new URL(req.url),p=u.pathname;
-    if(req.method==='OPTIONS')return new Response(null,{headers:CORS});
-    if(p==='/health')return R({status:'ok',worker:'caffeine-brain',version:'4.2',primary:'groq/llama-3.3-70b-versatile',fallback:'gemini/gemini-2.0-flash',auto_switch:'enabled',d1:'connected',mcp_protocol:'json-rpc-2.0',endpoints:['/health','/chat','/mcp','/log','/memory','/events','/agents','/archive','/operate','/search','/bash','/evolve']});
-    if(p==='/mcp'){
-      if(req.method==='GET')return R({protocol_version:'2024-11-05',capabilities:{tools:{}},server_info:{name:'caffeine-brain',version:'3.1',description:'Autonomous AI brain for caffeine-brainforge',url:'https://caffeine-brain-worker.richard-brown-miami.workers.dev'},tools:TOOLS,status:'live'});
-      if(req.method==='POST'){
-        let b;try{b=await req.json();}catch(e){return R({error:'Invalid JSON'},400);}
-        if(b.jsonrpc==='2.0'){
-          const{method:m,params:pr,id}=b;
-          if(m==='initialize')return R({jsonrpc:'2.0',id,result:{protocolVersion:'2024-11-05',capabilities:{tools:{}},serverInfo:{name:'caffeine-brain',version:'3.1'}}});
-          if(m==='tools/list')return R({jsonrpc:'2.0',id,result:{tools:TOOLS}});
-          if(m==='notifications/initialized')return R({jsonrpc:'2.0',id:null,result:{}});
-          if(m==='tools/call'){
-            const tn=pr&&pr.name,ta=(pr&&pr.arguments)||{};
-            if(!tn)return R({jsonrpc:'2.0',id,error:{code:-32602,message:'tool name required'}});
-            try{const r=await dispatchTool(tn,ta,env);return R({jsonrpc:'2.0',id,result:{content:[{type:'text',text:JSON.stringify(r,null,2)}]}});}
-            catch(e){return R({jsonrpc:'2.0',id,error:{code:-32603,message:e.message}});}
-          }
-          return R({jsonrpc:'2.0',id,error:{code:-32601,message:'Method not found: '+m}});
-        }
-        const{tool,params:tp}=b;if(!tool)return R({error:'tool or jsonrpc required'},400);
-        try{return R(await dispatchTool(tool,tp||{},env));}catch(e){return R({error:e.message},500);}
+  async fetch(request, env) {
+    const method = request.method;
+    if (method === 'OPTIONS') return optionsResponse();
+
+    const url = new URL(request.url);
+    let path = url.pathname;
+
+    // Normalize /api/* → /* (preserve /api/* paths in health output but route to same handlers)
+    const normalizedPath = path.startsWith('/api/') ? path.slice(4) : path;
+
+    // Re-assemble request with normalized URL for downstream handlers
+    const normalizedUrl = new URL(request.url);
+    normalizedUrl.pathname = normalizedPath;
+    const normalizedRequest = new Request(normalizedUrl.toString(), request);
+
+    try {
+      if (normalizedPath === '/health' || normalizedPath === '/') {
+        return await handleHealth(env);
       }
-    }
-    if(p==='/chat'&&req.method==='POST'){
-      let b;try{b=await req.json();}catch(e){return R({error:'Invalid JSON'},400);}
-      if(!b.message)return R({error:'message required'},400);
-      try{
-        // FIX 2: Memory injection limit — fetch top 10 by access_count (not ALL 113+ memories)
-        // This prevents token overflow on Groq/Gemini
-        let memoryContext = '';
-        try {
-          const memoriesResult = await env.DB.prepare(
-            "SELECT key, value FROM memories ORDER BY access_count DESC, created_at DESC LIMIT 10"
-          ).all();
-          if (memoriesResult.results && memoriesResult.results.length > 0) {
-            memoryContext = memoriesResult.results
-              .map(m => `[${m.key}]: ${(m.value||'').substring(0,200)}`)
-              .join('\n');
-          }
-        } catch (memErr) { /* non-fatal — continue without memory context */ }
-
-        // ── Step 2: Build context — memory + web search + any user-supplied ctx ──
-        let chatCtx = b.context || '';
-        if (memoryContext) {
-          chatCtx = 'STORED MEMORIES — cite by [key_name] in your response:\n' + memoryContext +
-                    (chatCtx ? '\n\n' + chatCtx : '');
-        }
-        let searchData = null;
-        if (shouldAutoSearch(b.message)) {
-          try {
-            searchData = await duckDuckGoSearch(b.message);
-            if (searchData.results && searchData.results.length > 0) {
-              const sr = searchData.results.map((x,i) => (i+1)+'. '+x.title+': '+x.description).join('\n');
-              chatCtx = (chatCtx ? chatCtx + '\n\n' : '') + 'Web search results for context:\n' + sr;
-            }
-          } catch(se) {}
-        }
-
-        // ── Step 3: Call AI (Groq primary, Gemini auto-switch on ANY error) ──
-        const r = await chat(b.message, chatCtx, env);
-        const aiReply = r.reply || '';
-
-        // ── Step 4: Save user message AND AI reply to D1 memories ──
-        const timestamp = Date.now();
-        ctx.waitUntil(
-          env.DB.prepare(
-            "INSERT OR REPLACE INTO memories (key, value, created_at) VALUES (?, ?, datetime('now'))"
-          ).bind('chat_user_' + timestamp, b.message).run().catch(() => {})
-        );
-        ctx.waitUntil(
-          env.DB.prepare(
-            "INSERT OR REPLACE INTO memories (key, value, created_at) VALUES (?, ?, datetime('now'))"
-          ).bind('chat_ai_' + timestamp, aiReply.substring(0, 500)).run().catch(() => {})
-        );
-
-        // ── Step 5: Log event ──
-        ctx.waitUntil(evtLog(env.DB,'chat-endpoint','user-message','pass',['chat']).catch(()=>{}));
-
-        return R({...r, source:'chat', memory_context_used: !!memoryContext,
-                  memories_loaded: memoryContext ? memoryContext.split('\n').length : 0,
-                  auto_searched: !!searchData,
-                  search_results: searchData ? searchData.results : undefined});
-      }catch(e){return R({error:e.message,retry_suggestion:'Please try again in 60 seconds. If issue persists, check API key status.'},500);}
-    }
-    if(p==='/log'&&req.method==='POST'){
-      let b;try{b=await req.json();}catch(e){return R({error:'Invalid JSON'},400);}
-      const entry='## Log Entry\n**Time:** '+new Date().toISOString()+'\n**Agent:** '+(b.agent||'unknown')+'\n**Message:** '+(b.message||'')+'\n\n';
-      const gh=await ghLog(entry,env).catch(e=>({status:500}));
-      ctx.waitUntil(evtLog(env.DB,b.agent||'log-endpoint','log-entry','pass',['log']).catch(()=>{}));
-      return R({status:'logged',github_status:gh.status||200});
-    }
-    if(p==='/memory'){
-      if(req.method==='GET'){const k=u.searchParams.get('key');if(!k)return R({error:'key required'},400);return R(await memRead(env.DB,k));}
-      if(req.method==='POST'){let b;try{b=await req.json();}catch(e){return R({error:'Invalid JSON'},400);}return R(await memWrite(env.DB,b.key,b.value,b.level||'L2'));}
-    }
-    if(p==='/events'){
-      const lim=parseInt(u.searchParams.get('limit')||'20');
-      const r=await env.DB.prepare('SELECT * FROM events ORDER BY ts DESC LIMIT ?').bind(lim).all();
-      return R({events:(r&&r.results)||[],count:(r&&r.results&&r.results.length)||0});
-    }
-    if(p==='/agents')return R(await agentList(env.DB));
-    // /archive — GET returns dry-run count, POST actually archives
-    if(p==='/archive'){
-      if(req.method==='GET'){
-        // Dry-run: count how many would be archived without deleting
-        const cutoff=new Date(Date.now()-30*24*60*60*1000).toISOString();
-        const old=await env.DB.prepare('SELECT COUNT(*) as c FROM memories WHERE (accessed_at < ? OR last_accessed < ?) AND level=?').bind(cutoff,cutoff,'L2').first();
-        return R({archived:0,would_archive:(old&&old.c)||0,cutoff,status:'ok',note:'Use POST /archive to actually archive'});
+      if (normalizedPath === '/chat' && method === 'POST') {
+        return await handleChat(normalizedRequest, env);
       }
-      if(req.method==='POST'){
-        return R(await doArchive(env.DB));
+      if (normalizedPath === '/memory') {
+        return await handleMemory(normalizedRequest, env);
       }
-    }
-    if(p==='/operate'){
-      if(req.method==='GET')return R(await operate({action:'read_state'},env));
-      if(req.method==='POST'){let b;try{b=await req.json();}catch(e){return R({error:'Invalid JSON'},400);}return R(await operate(b,env));}
-    }
-    // ── /bash ENDPOINT ─────────────────────────────────────────────────────────
-    if(p==='/bash'){
-      const db = env.DB;
-      if(req.method==='POST'){
-        let b; try{b=await req.json();}catch(e){return R({error:'Invalid JSON'},400);}
-        if(!b.tunnelUrl) return R({error:'tunnelUrl required'},400);
-        await memWrite(db,'bash-tunnel-url',b.tunnelUrl,'L1');
-        await evtLog(db,'bash-endpoint','update-tunnel-url',b.tunnelUrl,['bash','tunnel']).catch(()=>{});
-        return R({status:'saved',tunnelUrl:b.tunnelUrl,permanentUrl:'https://caffeine-brain-worker.richard-brown-miami.workers.dev/bash'});
+      if (normalizedPath === '/events') {
+        return await handleEvents(normalizedRequest, env);
       }
-      const urlParam = u.searchParams.get('url');
-      if(urlParam){
-        await memWrite(db,'bash-tunnel-url',urlParam,'L1').catch(()=>{});
-        return Response.redirect(urlParam,302);
+      if (normalizedPath === '/agents') {
+        return await handleAgents(env);
       }
-      const stored = await memRead(db,'bash-tunnel-url').catch(()=>({found:false}));
-      const tunnelUrl = stored && stored.found ? stored.value : null;
-      const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Caffeine Brainforge — Bash Terminal</title>
-<style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:monospace;background:#0a0a0a;color:#00ff88;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
-  .card{background:#111;border:1px solid #00ff88;border-radius:8px;padding:32px;max-width:640px;width:100%}
-  h1{font-size:1.4rem;margin-bottom:8px;color:#00ff88}
-  .sub{color:#888;font-size:0.85rem;margin-bottom:24px}
-  .status{padding:12px 16px;border-radius:6px;margin-bottom:20px;font-size:0.9rem}
-  .status.active{background:#0a2a1a;border:1px solid #00ff88;color:#00ff88}
-  .status.inactive{background:#2a0a0a;border:1px solid #ff4444;color:#ff6666}
-  label{display:block;font-size:0.8rem;color:#888;margin-bottom:6px;margin-top:16px}
-  input{width:100%;padding:10px 14px;background:#1a1a1a;border:1px solid #333;border-radius:6px;color:#fff;font-family:monospace;font-size:0.9rem;outline:none}
-  input:focus{border-color:#00ff88}
-  button{margin-top:14px;width:100%;padding:12px;background:#00ff88;color:#0a0a0a;border:none;border-radius:6px;font-family:monospace;font-size:1rem;font-weight:700;cursor:pointer}
-  button:hover{background:#00dd77}
-  .launch{display:block;text-align:center;padding:12px;background:#003322;border:1px solid #00ff88;border-radius:6px;color:#00ff88;text-decoration:none;font-size:1rem;margin-bottom:16px}
-  .launch:hover{background:#004433}
-  pre{background:#0a0a0a;border:1px solid #222;border-radius:6px;padding:16px;overflow-x:auto;font-size:0.78rem;color:#aaa;margin-top:8px;line-height:1.6}
-  .dim{color:#555;font-size:0.78rem;margin-top:16px}
-</style>
-</head>
-<body>
-<div class="card">
-  <h1>🖥️ Caffeine Brainforge — Bash Terminal</h1>
-  <p class="sub">Permanent URL: <strong>https://caffeine-brain-worker.richard-brown-miami.workers.dev/bash</strong></p>
-  ${tunnelUrl ? `
-  <div class="status active">✅ Tunnel active — redirecting in 2 seconds...</div>
-  <a href="${tunnelUrl}" class="launch">🚀 Launch Terminal Now →</a>
-  <script>setTimeout(()=>window.location.href="${tunnelUrl}",2000);</script>
-  ` : `
-  <div class="status inactive">⚠️ No active tunnel URL stored. Start the tunnel and update below.</div>
-  `}
-  <label>Update Tunnel URL (paste new URL after session reset)</label>
-  <input type="text" id="turl" placeholder="https://your-tunnel.trycloudflare.com" value="${tunnelUrl||''}">
-  <button onclick="saveTunnel()">Save & Launch Terminal</button>
-  <p style="margin-top:24px;color:#888;font-size:0.82rem;">📋 To reconnect after session reset, run these commands:</p>
-  <pre>ttyd -p 7681 bash &amp;
-cloudflared tunnel --url http://localhost:7681 run &quot;agro trust tunnel&quot;</pre>
-  <p style="margin-top:8px;color:#888;font-size:0.82rem;">Then paste the new trycloudflare.com URL above, or use:</p>
-  <pre>curl -X POST https://caffeine-brain-worker.richard-brown-miami.workers.dev/bash   -H &quot;Content-Type: application/json&quot;   -d &#x27;{&quot;tunnelUrl&quot;: &quot;https://YOUR-URL.trycloudflare.com&quot;}&#x27;</pre>
-  <p class="dim">Tunnel: agro trust tunnel | ID: 8690a2f0-925a-48c2-8376-d5fcd2b0f776</p>
-</div>
-<script>
-async function saveTunnel(){
-  const url=document.getElementById('turl').value.trim();
-  if(!url)return alert('Paste a tunnel URL first');
-  const r=await fetch(location.href,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tunnelUrl:url})});
-  const d=await r.json();
-  if(d.status==='saved') window.location.href=url;
-  else alert('Error: '+JSON.stringify(d));
-}
-</script>
-</body>
-</html>`;
-      return new Response(html,{status:200,headers:{...CORS,'Content-Type':'text/html;charset=utf-8'}});
+      if (normalizedPath === '/archive') {
+        return await handleArchive(normalizedRequest, env);
+      }
+      if (normalizedPath === '/search') {
+        return await handleSearch(normalizedRequest, env);
+      }
+      if (normalizedPath.startsWith('/evolve')) {
+        return await handleEvolve(normalizedRequest, env);
+      }
+      if (normalizedPath === '/conflicts') {
+        return await handleConflicts(normalizedRequest, env);
+      }
+      if (normalizedPath.startsWith('/suggest')) {
+        return await handleSuggest(normalizedRequest, env);
+      }
+      if (normalizedPath === '/bash') {
+        return await handleBash(normalizedRequest, env);
+      }
+      if (normalizedPath === '/operate' && method === 'POST') {
+        return await handleOperate(normalizedRequest, env);
+      }
+
+      return corsResponse({ error: 'Not found', path: normalizedPath }, 404);
+    } catch (err) {
+      console.error('Worker error:', err);
+      return corsResponse({ error: err.message || 'Internal server error' }, 500);
     }
-    // === /evolve — Self-improvement cycle with FIX 1 auto-switch + FIX 4 per-dimension cycle tracking ===
-    if(p==='/evolve'){
-      try{
-        // FIX 4: Per-dimension cycle tracking in D1
-        // Each dimension gets its own cycle counter stored as a D1 memory key
-        const dims=['auto-improvement','skill-acquisition','identity-development','thinking-improvement','feature-addition','tool-integration'];
-        const dimCycles={};
-        for(const dim of dims){
-          try{
-            const key='evolve_cycle_'+dim.replace(/-/g,'_');
-            const rec=await env.DB.prepare("SELECT value FROM memories WHERE key=?").bind(key).first();
-            dimCycles[dim]=rec?parseInt(rec.value||'0'):0;
-          }catch(de){dimCycles[dim]=0;}
-        }
-
-        // FIX 1: auto-switch for /evolve — uses chatForEvolve which tries Groq then Gemini
-        const prompt='You are Brainforge AI in self-improvement cycle. Hybrid goal: 6 self-evolution dims: (1)Auto Improvement, (2)Skill Acquisition, (3)Identity Development, (4)Thinking Improvement, (5)Feature Addition, (6)Tool Integration. Current cycle counts: '+JSON.stringify(dimCycles)+'. Suggest ONE concrete improvement for the dimension with LOWEST cycle count as JSON: {"dimension":"NAME","action":"desc","reasoning":"why","next_step":"step"}';
-        let sug='{"dimension":"AUTO_IMPROVEMENT","action":"Log baseline","reasoning":"First cycle","next_step":"Record state in D1"}';
-        sug = await chatForEvolve(prompt, env);
-
-        // FIX 4: Determine which dimension to increment and update D1
-        let parsedDim = null;
-        try{
-          const parsed=JSON.parse(sug);
-          parsedDim=parsed.dimension||null;
-        }catch(pe){
-          // Try to extract dimension from text
-          for(const dim of dims){
-            if(sug.toLowerCase().includes(dim.replace('-','_'))||sug.toLowerCase().includes(dim)){
-              parsedDim=dim.toUpperCase().replace(/-/g,'_');break;
-            }
-          }
-        }
-
-        // FIX 4: Increment cycle count for the suggested dimension
-        let nextCyc=1;
-        if(parsedDim){
-          const dimKey='evolve_cycle_'+parsedDim.toLowerCase().replace(/_/g,'-').replace(/-/g,'_');
-          const dimKeyNorm='evolve_cycle_'+parsedDim.toLowerCase().replace(/[^a-z]/g,'_');
-          try{
-            const existing=await env.DB.prepare("SELECT value FROM memories WHERE key=?").bind(dimKeyNorm).first();
-            nextCyc=(existing?parseInt(existing.value||'0'):0)+1;
-            await memWrite(env.DB,dimKeyNorm,String(nextCyc),'L1');
-          }catch(de){}
-        }
-
-        // Also track total evolve cycles
-        let totalCyc=1;
-        try{const cr=await env.DB.prepare("SELECT value FROM memories WHERE key='evolve_total_cycles'").first();totalCyc=(cr?parseInt(cr.value||'0'):0)+1;await memWrite(env.DB,'evolve_total_cycles',String(totalCyc),'L1');}catch(de){}
-
-        try{await evtLog(env.DB,'evolve-endpoint','self-improvement-cycle','cycle:'+totalCyc,['evolve','self-improvement']);}catch(le){}
-
-        return R({status:'ok',cycle:totalCyc,dimension_cycles:dimCycles,suggested_dimension:parsedDim,suggestion:sug,timestamp:new Date().toISOString(),hybrid_goal:'active',dimensions:dims});
-      }catch(e){return R({status:'error',error:e.message},500);}
-    }
-
-    // === /search — DuckDuckGo live search ===
-    if(p==='/search'){
-      const q=u.searchParams.get('q')||u.searchParams.get('query');
-      if(!q)return R({error:'q parameter required. Use /search?q=your+query'},400);
-      try{
-        const data=await duckDuckGoSearch(q);
-        ctx.waitUntil(evtLog(env.DB,'search-endpoint','ddg-search',q,['search','duckduckgo']).catch(()=>{}));
-        // Save search to D1 memory
-        ctx.waitUntil(memWrite(env.DB,'last-search-'+Date.now(),JSON.stringify({q,results:data.results}),'L2').catch(()=>{}));
-        return R(data);
-      }catch(e){return R({error:e.message},500);}
-    }
-
-    return R({error:'Not found',path:p},404);
-  }
+  },
 };
