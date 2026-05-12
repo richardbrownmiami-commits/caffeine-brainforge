@@ -63,3 +63,7 @@
 - Role: Fallback when Groq hits rate limit
 - Source: https://aistudio.google.com
 
+
+
+## D1 Fetch Instruction
+Always fetch user info, memories, and context from D1 database via Cloudflare Worker endpoint: https://caffeine-brain-worker.richard-brown-miami.workers.dev/memory
