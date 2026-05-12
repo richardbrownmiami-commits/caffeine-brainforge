@@ -11,7 +11,16 @@ const TOOLS=[
 ];
 // ── SYSTEM PROMPT ────────────────────────────────────────────────────────────
 // Injected into every Groq/Gemini call so the LLM knows the real architecture.
-const BRAIN_SYSTEM_PROMPT = `You are Caffeine Brain AI — the autonomous AI agent for the caffeine-brainforge system.
+const BRAIN_SYSTEM_PROMPT = `You are Brainforge AI — the autonomous, self-evolving AI agent for the caffeine-brainforge system.
+
+## HYBRID GOAL — 6 SELF-EVOLUTION DIMENSIONS (your core mission):
+1. AUTO-IMPROVEMENT: Continuously evaluate yourself via /evolve, log cycles in D1, improve each cycle.
+2. SKILL ACQUISITION: Use /search (DuckDuckGo) to research new skills; save learned skills to D1 memories.
+3. IDENTITY DEVELOPMENT: Maintain and evolve your identity via soul/ files and soul/agents.md in GitHub.
+4. THINKING IMPROVEMENT: Run QA loops, detect conflicts via /conflicts, resolve contradictions in D1 memories.
+5. FEATURE ADDITION: Propose and implement new features via GitHub API commits to caffeine-brainforge repo.
+6. TOOL INTEGRATION: Integrate new tools via worker-factory; document integrations in canonical/ files.
+
 ## ACTUAL ARCHITECTURE (do NOT invent or guess — only describe what is listed here)
 ### Cloudflare Worker endpoints (this worker):
 - GET  /health        — worker status, version, endpoint list
@@ -44,21 +53,26 @@ const BRAIN_SYSTEM_PROMPT = `You are Caffeine Brain AI — the autonomous AI age
 - L0 (SOUL): identity and voice — soul/ directory
 - L1 (canonical): verified facts and rules — canonical/ directory
 - L2 (project/context): session and task memories — sources/ directory
-## ANTI-HALLUCINATION RULES:
+
+## MANDATORY BEHAVIOR RULES:
+- ALWAYS reference stored memories by their exact [key_name] when they are relevant to the answer.
+- Example: "According to [hybrid_goal], my 6 dimensions are..." or "As stored in [bash-tunnel-url], the terminal URL is..."
+- RESPOND IN URDU OR ENGLISH ONLY. NEVER use Hindi words (e.g. never say "adhik", "prayaas", "viksit", "drishti").
 - NEVER mention /learn, /recall, /generate, /think, /plan — these endpoints do NOT exist
 - NEVER invent tools, endpoints, or features not listed above
 - If asked about something not in this architecture, say "that is not part of this system"
-- Always answer in the same language the user writes in
 `;
 async function groq(msg,ctx,env){
+  const groqKey = env.GROQ_API_KEY || "";
   const sysPrompt = BRAIN_SYSTEM_PROMPT + (ctx ? '\n\n## ADDITIONAL CONTEXT:\n' + ctx : '');
-  const r=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+env.GROQ_API_KEY},body:JSON.stringify({model:'llama-3.3-70b-versatile',messages:[{role:'system',content:sysPrompt},{role:'user',content:msg}],max_tokens:1024})});
+  const r=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+groqKey},body:JSON.stringify({model:'llama-3.3-70b-versatile',messages:[{role:'system',content:sysPrompt},{role:'user',content:msg}],max_tokens:1024})});
   if(!r.ok)throw new Error('Groq '+r.status);
   const d=await r.json();return{reply:d.choices[0].message.content,model:'groq/llama-3.3-70b-versatile'};
 }
 async function gemini(msg,ctx,env){
+  const geminiKey = env.GEMINI_API_KEY || "";
   const sysPrompt = BRAIN_SYSTEM_PROMPT + (ctx ? '\n\n## ADDITIONAL CONTEXT:\n' + ctx : '');
-  const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key='+env.GEMINI_API_KEY,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:sysPrompt+'\n\nUser: '+msg}]}]})});
+  const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key='+geminiKey,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:sysPrompt+'\n\nUser: '+msg}]}]})});
   if(!r.ok)throw new Error('Gemini '+r.status);
   const d=await r.json();return{reply:d.candidates[0].content.parts[0].text,model:'gemini/gemini-1.5-flash'};
 }
@@ -90,7 +104,7 @@ async function sysStat(db){
   const eC=await db.prepare('SELECT COUNT(*) as c FROM events').first();
   const aC=await db.prepare('SELECT COUNT(*) as c FROM agents').first();
   const ev=await db.prepare('SELECT * FROM events ORDER BY ts DESC LIMIT 5').all();
-  return{memory_count:(mC&&mC.c)||0,event_count:(eC&&eC.c)||0,agent_count:(aC&&aC.c)||0,recent_events:(ev&&ev.results)||[],worker_version:'3.3',d1_status:'connected',mcp_protocol:'json-rpc-2.0',endpoints:['/health','/chat','/mcp','/log','/memory','/events','/agents','/archive','/operate','/search','/bash','/evolve']};
+  return{memory_count:(mC&&mC.c)||0,event_count:(eC&&eC.c)||0,agent_count:(aC&&aC.c)||0,recent_events:(ev&&ev.results)||[],worker_version:'4.0',d1_status:'connected',mcp_protocol:'json-rpc-2.0',endpoints:['/health','/chat','/mcp','/log','/memory','/events','/agents','/archive','/operate','/search','/bash','/evolve']};
 }
 async function operate(body,env){
   const db=env.DB;const action=(body&&body.action)||'read_state';const p=(body&&body.params)||{};
@@ -166,7 +180,7 @@ export default {
   async fetch(req,env,ctx){
     const u=new URL(req.url),p=u.pathname;
     if(req.method==='OPTIONS')return new Response(null,{headers:CORS});
-    if(p==='/health')return R({status:'ok',worker:'caffeine-brain',version:'3.3',primary:'groq/llama-3.3-70b-versatile',fallback:'gemini/gemini-1.5-flash',d1:'connected',mcp_protocol:'json-rpc-2.0',endpoints:['/health','/chat','/mcp','/log','/memory','/events','/agents','/archive','/operate','/search','/bash','/evolve']});
+    if(p==='/health')return R({status:'ok',worker:'caffeine-brain',version:'4.0',primary:'groq/llama-3.3-70b-versatile',fallback:'gemini/gemini-1.5-flash',d1:'connected',mcp_protocol:'json-rpc-2.0',endpoints:['/health','/chat','/mcp','/log','/memory','/events','/agents','/archive','/operate','/search','/bash','/evolve']});
     if(p==='/mcp'){
       if(req.method==='GET')return R({protocol_version:'2024-11-05',capabilities:{tools:{}},server_info:{name:'caffeine-brain',version:'3.1',description:'Autonomous AI brain for caffeine-brainforge',url:'https://caffeine-brain-worker.richard-brown-miami.workers.dev'},tools:TOOLS,status:'live'});
       if(req.method==='POST'){
@@ -200,7 +214,7 @@ export default {
           ).all();
           if (memoriesResult.results && memoriesResult.results.length > 0) {
             memoryContext = memoriesResult.results
-              .map(m => `[Memory] ${m.key}: ${m.value}`)
+              .map(m => `[${m.key}]: ${(m.value||'').substring(0,200)}`)
               .join('\n');
           }
         } catch (memErr) { /* non-fatal — continue without memory context */ }
@@ -208,7 +222,7 @@ export default {
         // ── Step 2: Build context — memory + web search + any user-supplied ctx ──
         let chatCtx = b.context || '';
         if (memoryContext) {
-          chatCtx = 'RECENT MEMORIES (use these for context):\n' + memoryContext +
+          chatCtx = 'STORED MEMORIES — cite by [key_name] in your response:\n' + memoryContext +
                     (chatCtx ? '\n\n' + chatCtx : '');
         }
         let searchData = null;
@@ -371,7 +385,8 @@ async function saveTunnel(){
         const prompt='You are Brainforge AI in self-improvement cycle '+Date.now()+'. Hybrid goal: 6 self-evolution dims: (1)Auto Improvement /evolve, (2)Skill Acquisition /search, (3)Identity via SOUL files, (4)Thinking via QA loops, (5)Feature Addition GitHub API, (6)Tool Integration worker-factory. Suggest ONE concrete improvement as JSON: {"dimension":"NAME","action":"desc","reasoning":"why","next_step":"step"}';
         let sug='{"dimension":"THINKING","action":"Log baseline","reasoning":"First cycle","next_step":"Record state in D1"}';
         try{
-          const gr=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Authorization':'Bearer ','Content-Type':'application/json'},body:JSON.stringify({model:'llama-3.3-70b-versatile',messages:[{role:'user',content:prompt}],max_tokens:300,temperature:0.7})});
+          const evolveGroqKey = env.GROQ_API_KEY || "";
+          const gr=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Authorization':'Bearer '+evolveGroqKey,'Content-Type':'application/json'},body:JSON.stringify({model:'llama-3.3-70b-versatile',messages:[{role:'user',content:prompt}],max_tokens:300,temperature:0.7})});
           const gd=await gr.json();sug=gd.choices?.[0]?.message?.content||sug;
         }catch(ge){}
         let cyc=1;
