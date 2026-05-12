@@ -54,14 +54,23 @@ const BRAIN_SYSTEM_PROMPT = `You are Brainforge AI — the autonomous, self-evol
 - L1 (canonical): verified facts and rules — canonical/ directory
 - L2 (project/context): session and task memories — sources/ directory
 
+## MANDATORY LANGUAGE RULES — CRITICAL:
+- You MUST respond in Urdu script (نستعلیق) or English ONLY.
+- Hindi words are STRICTLY FORBIDDEN. You are NOT allowed to use any Hindi vocabulary.
+- FORBIDDEN Hindi words (NEVER use these): vishleshan, prakriya, viksit, adhik, prayaas, karoon, drishti, vikas, samiksha, suchna, kriya, tatha, avam, seva, hetu, niyam, parinaam, udaharan, anusar, keval, sabhi, lekin (use "lekin" only in Urdu context), kyunki, isliye, phir, matlab, zaroor, taaki, warna, shayad, bahut, bohot, aur, woh, yeh.
+- If you want to say "analysis" → say "تجزیہ" (tajzia) in Urdu or "analysis" in English. NEVER "vishleshan".
+- If you want to say "process" → say "عمل" (amal) or "process". NEVER "prakriya".
+- If you want to say "develop" → say "ترقی" (taraqqi) or "develop". NEVER "viksit".
+- Respond fully in either Urdu script OR English. Do NOT mix Hindi vocabulary into either language.
+
 ## MANDATORY BEHAVIOR RULES:
 - ALWAYS reference stored memories by their exact [key_name] when they are relevant to the answer.
 - Example: "According to [hybrid_goal], my 6 dimensions are..." or "As stored in [bash-tunnel-url], the terminal URL is..."
-- RESPOND IN URDU OR ENGLISH ONLY. NEVER use Hindi words (e.g. never say "adhik", "prayaas", "viksit", "drishti").
 - NEVER mention /learn, /recall, /generate, /think, /plan — these endpoints do NOT exist
 - NEVER invent tools, endpoints, or features not listed above
 - If asked about something not in this architecture, say "that is not part of this system"
 `;
+// FIX 1: Groq → Gemini auto-switch with improved error handling
 async function groq(msg,ctx,env){
   const groqKey = env.GROQ_API_KEY || "";
   const sysPrompt = BRAIN_SYSTEM_PROMPT + (ctx ? '\n\n## ADDITIONAL CONTEXT:\n' + ctx : '');
@@ -69,6 +78,7 @@ async function groq(msg,ctx,env){
   if(!r.ok)throw new Error('Groq '+r.status);
   const d=await r.json();return{reply:d.choices[0].message.content,model:'groq/llama-3.3-70b-versatile'};
 }
+// FIX 1: gemini-2.0-flash (not deprecated gemini-1.5-flash)
 async function gemini(msg,ctx,env){
   const geminiKey = env.GEMINI_API_KEY || "";
   const sysPrompt = BRAIN_SYSTEM_PROMPT + (ctx ? '\n\n## ADDITIONAL CONTEXT:\n' + ctx : '');
@@ -76,7 +86,36 @@ async function gemini(msg,ctx,env){
   if(!r.ok)throw new Error('Gemini '+r.status);
   const d=await r.json();return{reply:d.candidates[0].content.parts[0].text,model:'gemini/gemini-2.0-flash'};
 }
-async function chat(msg,ctx,env){try{return await groq(msg,ctx,env);}catch(e){try{return{...await gemini(msg,ctx,env),fallback:true,reason:e.message};}catch(e2){throw new Error('Both failed: '+e.message+' | '+e2.message);}}}
+// FIX 1: auto-switch — ANY Groq error (429, 500, timeout) → immediately try Gemini
+// If both fail → return a helpful message with retry suggestion
+async function chat(msg,ctx,env){
+  let groqErr = null;
+  try{return await groq(msg,ctx,env);}catch(e){groqErr = e;}
+  // Groq failed for any reason — auto-switch to Gemini immediately
+  let geminiErr = null;
+  try{return{...await gemini(msg,ctx,env),fallback:true,reason:'Groq unavailable: '+groqErr.message};}catch(e2){geminiErr = e2;}
+  // Both failed — return helpful error with retry info
+  throw new Error('AI temporarily unavailable. Groq: '+groqErr.message+' | Gemini: '+geminiErr.message+'. Please retry in 60 seconds or check API key status.');
+}
+// FIX 1: same auto-switch logic for /evolve and /suggest endpoints
+async function chatForEvolve(msg,env){
+  let groqErr = null;
+  try{
+    const groqKey = env.GROQ_API_KEY || "";
+    const r=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Authorization':'Bearer '+groqKey,'Content-Type':'application/json'},body:JSON.stringify({model:'llama-3.3-70b-versatile',messages:[{role:'user',content:msg}],max_tokens:300,temperature:0.7})});
+    if(!r.ok)throw new Error('Groq '+r.status);
+    const d=await r.json();return d.choices?.[0]?.message?.content||'';
+  }catch(e){groqErr=e;}
+  // Groq failed — try Gemini
+  try{
+    const geminiKey = env.GEMINI_API_KEY || "";
+    const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key='+geminiKey,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:msg}]}]})});
+    if(!r.ok)throw new Error('Gemini '+r.status);
+    const d=await r.json();return d.candidates?.[0]?.content?.parts?.[0]?.text||'';
+  }catch(e2){
+    return '{"dimension":"AUTO_IMPROVEMENT","action":"Log cycle baseline","reasoning":"Both Groq and Gemini temporarily unavailable — retry next cycle","next_step":"Retry in 60 seconds"}';
+  }
+}
 // D1 helpers - schema-aware
 async function memRead(db,key){
   const r=await db.prepare('SELECT * FROM memories WHERE key=?').bind(key).first();
@@ -104,7 +143,7 @@ async function sysStat(db){
   const eC=await db.prepare('SELECT COUNT(*) as c FROM events').first();
   const aC=await db.prepare('SELECT COUNT(*) as c FROM agents').first();
   const ev=await db.prepare('SELECT * FROM events ORDER BY ts DESC LIMIT 5').all();
-  return{memory_count:(mC&&mC.c)||0,event_count:(eC&&eC.c)||0,agent_count:(aC&&aC.c)||0,recent_events:(ev&&ev.results)||[],worker_version:'4.1',d1_status:'connected',mcp_protocol:'json-rpc-2.0',endpoints:['/health','/chat','/mcp','/log','/memory','/events','/agents','/archive','/operate','/search','/bash','/evolve']};
+  return{memory_count:(mC&&mC.c)||0,event_count:(eC&&eC.c)||0,agent_count:(aC&&aC.c)||0,recent_events:(ev&&ev.results)||[],worker_version:'4.2',d1_status:'connected',mcp_protocol:'json-rpc-2.0',endpoints:['/health','/chat','/mcp','/log','/memory','/events','/agents','/archive','/operate','/search','/bash','/evolve']};
 }
 async function operate(body,env){
   const db=env.DB;const action=(body&&body.action)||'read_state';const p=(body&&body.params)||{};
@@ -180,7 +219,7 @@ export default {
   async fetch(req,env,ctx){
     const u=new URL(req.url),p=u.pathname;
     if(req.method==='OPTIONS')return new Response(null,{headers:CORS});
-    if(p==='/health')return R({status:'ok',worker:'caffeine-brain',version:'4.1',primary:'groq/llama-3.3-70b-versatile',fallback:'gemini/gemini-2.0-flash',d1:'connected',mcp_protocol:'json-rpc-2.0',endpoints:['/health','/chat','/mcp','/log','/memory','/events','/agents','/archive','/operate','/search','/bash','/evolve']});
+    if(p==='/health')return R({status:'ok',worker:'caffeine-brain',version:'4.2',primary:'groq/llama-3.3-70b-versatile',fallback:'gemini/gemini-2.0-flash',auto_switch:'enabled',d1:'connected',mcp_protocol:'json-rpc-2.0',endpoints:['/health','/chat','/mcp','/log','/memory','/events','/agents','/archive','/operate','/search','/bash','/evolve']});
     if(p==='/mcp'){
       if(req.method==='GET')return R({protocol_version:'2024-11-05',capabilities:{tools:{}},server_info:{name:'caffeine-brain',version:'3.1',description:'Autonomous AI brain for caffeine-brainforge',url:'https://caffeine-brain-worker.richard-brown-miami.workers.dev'},tools:TOOLS,status:'live'});
       if(req.method==='POST'){
@@ -206,11 +245,12 @@ export default {
       let b;try{b=await req.json();}catch(e){return R({error:'Invalid JSON'},400);}
       if(!b.message)return R({error:'message required'},400);
       try{
-        // ── Step 1: Fetch last 10 memories from D1 for context ──
+        // FIX 2: Memory injection limit — fetch top 10 by access_count (not ALL 113+ memories)
+        // This prevents token overflow on Groq/Gemini
         let memoryContext = '';
         try {
           const memoriesResult = await env.DB.prepare(
-            "SELECT key, value FROM memories ORDER BY created_at DESC LIMIT 10"
+            "SELECT key, value FROM memories ORDER BY access_count DESC, created_at DESC LIMIT 10"
           ).all();
           if (memoriesResult.results && memoriesResult.results.length > 0) {
             memoryContext = memoriesResult.results
@@ -236,7 +276,7 @@ export default {
           } catch(se) {}
         }
 
-        // ── Step 3: Call AI (Groq primary, Gemini fallback) ──
+        // ── Step 3: Call AI (Groq primary, Gemini auto-switch on ANY error) ──
         const r = await chat(b.message, chatCtx, env);
         const aiReply = r.reply || '';
 
@@ -260,7 +300,7 @@ export default {
                   memories_loaded: memoryContext ? memoryContext.split('\n').length : 0,
                   auto_searched: !!searchData,
                   search_results: searchData ? searchData.results : undefined});
-      }catch(e){return R({error:e.message},500);}
+      }catch(e){return R({error:e.message,retry_suggestion:'Please try again in 60 seconds. If issue persists, check API key status.'},500);}
     }
     if(p==='/log'&&req.method==='POST'){
       let b;try{b=await req.json();}catch(e){return R({error:'Invalid JSON'},400);}
@@ -296,12 +336,8 @@ export default {
       if(req.method==='POST'){let b;try{b=await req.json();}catch(e){return R({error:'Invalid JSON'},400);}return R(await operate(b,env));}
     }
     // ── /bash ENDPOINT ─────────────────────────────────────────────────────────
-    // Permanent bash terminal access via Cloudflare Tunnel proxy.
-    // The underlying tunnel URL is session-bound (ttyd+cloudflared),
-    // so we store/retrieve the current URL in D1. The permanent URL never changes.
     if(p==='/bash'){
       const db = env.DB;
-      // POST /bash — update stored tunnel URL
       if(req.method==='POST'){
         let b; try{b=await req.json();}catch(e){return R({error:'Invalid JSON'},400);}
         if(!b.tunnelUrl) return R({error:'tunnelUrl required'},400);
@@ -309,13 +345,11 @@ export default {
         await evtLog(db,'bash-endpoint','update-tunnel-url',b.tunnelUrl,['bash','tunnel']).catch(()=>{});
         return R({status:'saved',tunnelUrl:b.tunnelUrl,permanentUrl:'https://caffeine-brain-worker.richard-brown-miami.workers.dev/bash'});
       }
-      // GET /bash?url=<tunnel-url> — redirect to specific URL (also stores it)
       const urlParam = u.searchParams.get('url');
       if(urlParam){
         await memWrite(db,'bash-tunnel-url',urlParam,'L1').catch(()=>{});
         return Response.redirect(urlParam,302);
       }
-      // GET /bash — check stored URL, redirect if available, else show setup page
       const stored = await memRead(db,'bash-tunnel-url').catch(()=>({found:false}));
       const tunnelUrl = stored && stored.found ? stored.value : null;
       const html = `<!DOCTYPE html>
@@ -379,20 +413,59 @@ async function saveTunnel(){
 </html>`;
       return new Response(html,{status:200,headers:{...CORS,'Content-Type':'text/html;charset=utf-8'}});
     }
-    // === /evolve — Self-improvement cycle ===
+    // === /evolve — Self-improvement cycle with FIX 1 auto-switch + FIX 4 per-dimension cycle tracking ===
     if(p==='/evolve'){
       try{
-        const prompt='You are Brainforge AI in self-improvement cycle '+Date.now()+'. Hybrid goal: 6 self-evolution dims: (1)Auto Improvement /evolve, (2)Skill Acquisition /search, (3)Identity via SOUL files, (4)Thinking via QA loops, (5)Feature Addition GitHub API, (6)Tool Integration worker-factory. Suggest ONE concrete improvement as JSON: {"dimension":"NAME","action":"desc","reasoning":"why","next_step":"step"}';
-        let sug='{"dimension":"THINKING","action":"Log baseline","reasoning":"First cycle","next_step":"Record state in D1"}';
+        // FIX 4: Per-dimension cycle tracking in D1
+        // Each dimension gets its own cycle counter stored as a D1 memory key
+        const dims=['auto-improvement','skill-acquisition','identity-development','thinking-improvement','feature-addition','tool-integration'];
+        const dimCycles={};
+        for(const dim of dims){
+          try{
+            const key='evolve_cycle_'+dim.replace(/-/g,'_');
+            const rec=await env.DB.prepare("SELECT value FROM memories WHERE key=?").bind(key).first();
+            dimCycles[dim]=rec?parseInt(rec.value||'0'):0;
+          }catch(de){dimCycles[dim]=0;}
+        }
+
+        // FIX 1: auto-switch for /evolve — uses chatForEvolve which tries Groq then Gemini
+        const prompt='You are Brainforge AI in self-improvement cycle. Hybrid goal: 6 self-evolution dims: (1)Auto Improvement, (2)Skill Acquisition, (3)Identity Development, (4)Thinking Improvement, (5)Feature Addition, (6)Tool Integration. Current cycle counts: '+JSON.stringify(dimCycles)+'. Suggest ONE concrete improvement for the dimension with LOWEST cycle count as JSON: {"dimension":"NAME","action":"desc","reasoning":"why","next_step":"step"}';
+        let sug='{"dimension":"AUTO_IMPROVEMENT","action":"Log baseline","reasoning":"First cycle","next_step":"Record state in D1"}';
+        sug = await chatForEvolve(prompt, env);
+
+        // FIX 4: Determine which dimension to increment and update D1
+        let parsedDim = null;
         try{
-          const evolveGroqKey = env.GROQ_API_KEY || "";
-          const gr=await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Authorization':'Bearer '+evolveGroqKey,'Content-Type':'application/json'},body:JSON.stringify({model:'llama-3.3-70b-versatile',messages:[{role:'user',content:prompt}],max_tokens:300,temperature:0.7})});
-          const gd=await gr.json();sug=gd.choices?.[0]?.message?.content||sug;
-        }catch(ge){}
-        let cyc=1;
-        try{const cr=await env.DB.prepare("SELECT COUNT(*) as cnt FROM events WHERE type='evolution'").first();cyc=Number(cr?.cnt||0)+1;}catch(de){}
-        try{await env.DB.prepare('INSERT INTO events (type,data,timestamp) VALUES (?,?,?)').bind('evolution',JSON.stringify({cycle:cyc,suggestion:sug,triggered_by:'api'}),new Date().toISOString()).run();}catch(de){}
-        return R({status:'ok',cycle:cyc,suggestion:sug,timestamp:new Date().toISOString(),hybrid_goal:'active',dimensions:['auto-improvement','skill-acquisition','identity-development','thinking-improvement','feature-addition','tool-integration']});
+          const parsed=JSON.parse(sug);
+          parsedDim=parsed.dimension||null;
+        }catch(pe){
+          // Try to extract dimension from text
+          for(const dim of dims){
+            if(sug.toLowerCase().includes(dim.replace('-','_'))||sug.toLowerCase().includes(dim)){
+              parsedDim=dim.toUpperCase().replace(/-/g,'_');break;
+            }
+          }
+        }
+
+        // FIX 4: Increment cycle count for the suggested dimension
+        let nextCyc=1;
+        if(parsedDim){
+          const dimKey='evolve_cycle_'+parsedDim.toLowerCase().replace(/_/g,'-').replace(/-/g,'_');
+          const dimKeyNorm='evolve_cycle_'+parsedDim.toLowerCase().replace(/[^a-z]/g,'_');
+          try{
+            const existing=await env.DB.prepare("SELECT value FROM memories WHERE key=?").bind(dimKeyNorm).first();
+            nextCyc=(existing?parseInt(existing.value||'0'):0)+1;
+            await memWrite(env.DB,dimKeyNorm,String(nextCyc),'L1');
+          }catch(de){}
+        }
+
+        // Also track total evolve cycles
+        let totalCyc=1;
+        try{const cr=await env.DB.prepare("SELECT value FROM memories WHERE key='evolve_total_cycles'").first();totalCyc=(cr?parseInt(cr.value||'0'):0)+1;await memWrite(env.DB,'evolve_total_cycles',String(totalCyc),'L1');}catch(de){}
+
+        try{await evtLog(env.DB,'evolve-endpoint','self-improvement-cycle','cycle:'+totalCyc,['evolve','self-improvement']);}catch(le){}
+
+        return R({status:'ok',cycle:totalCyc,dimension_cycles:dimCycles,suggested_dimension:parsedDim,suggestion:sug,timestamp:new Date().toISOString(),hybrid_goal:'active',dimensions:dims});
       }catch(e){return R({status:'error',error:e.message},500);}
     }
 
